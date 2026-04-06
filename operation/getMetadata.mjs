@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const ytDlpPath = path.join(__dirname, "../bin", "yt-dlp.exe");
-const ytDlpPathOld = path.join(__dirname, "../bin", "yt-dlp-old.exe");
+// const ytDlpPathOld = path.join(__dirname, "../bin", "yt-dlp-old.exe");
 
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
@@ -28,6 +28,8 @@ const metadataExtractor = async (req, res) => {
         maxBuffer: 10 * 1024 * 1024 // 10mb
     }
 
+    console.log(arg)
+
     let argument = arg
 
     const outPut = new Promise(async (resolve, reject) => {
@@ -35,15 +37,15 @@ const metadataExtractor = async (req, res) => {
         console.log(type)
         if (type === "video") {
             argument = argument.push(url)
-            proc = spawn(ytDlpPath, argument, {
+            proc = spawn(ytDlpPath, arg, {
                 stdio: ["ignore", "pipe", "pipe"]
             })
         } else if (type === "playlist") {
-            proc = spawn(ytDlpPathOld, url, {
+            proc = spawn(ytDlpPath, arg, {
                 stdio: ["ignore", "pipe", "pipe"]
             })
         } else if  (type === "audio") {
-            proc = spawn(ytDlpPath, url, {
+            proc = spawn(ytDlpPath, arg, {
                 stdio: ["ignore", "pipe", "pipe"]
             })
         } else {
