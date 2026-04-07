@@ -1,4 +1,5 @@
 import path from "path"
+import fs from 'fs';
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject} from "./dependencies.mjs"
@@ -7,12 +8,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const ytDlpPath = path.join(__dirname, "../bin", "yt-dlp.exe");
-const ytDlpPathOld = path.join(__dirname, "../bin", "yt-dlp-old.exe");
+
 const ffmpegPath = path.join(__dirname, "../ffmpeg-n8.0-7-g4f8b3891ee-win64-lgpl-shared-8.0/bin", "ffmpeg.exe");
-const tempPath = path.join(__dirname, "/operation/temp/")
+const tempPath = path.join(__dirname, "temp")
 
 const downloadVideoFunction = async (req, res) => {
-    const {url, format_id, title, start, end, formats, height = null} = req.body
+    const {url, format_id, title, start, end, formats, height = null, headers} = req.body
     
     let forFormat;
     let for_id = format_id
@@ -67,16 +68,29 @@ const downloadVideoFunction = async (req, res) => {
         console.log(`format: ${format}`)
         // format = `bv*[height<=1080][ext=mp4]+ba[ext=m4a]`
 
-        let newtitle = sanname(title)
-        newtitle = newtitle.toString().toLowerCase().trim()
-
+        let newtitle = sanname(title).toString().toLowerCase().trim()
         const filename = (newtitle || "video") + "_downzilla.mp4"
+        
+          const id = crypto.randomBytes(6).toString('hex');
+          const outputPath = path.join(tempPath, `${newtitle.toLowerCase()}_${id}.mp4`);
         
         await res.setHeader("Content-Type", "video/mp4");
         await res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
         // const trimArg = `ffmpeg:-ss ${start} -to ${end} -map 0:v -map 0:a`
+        
+        let headerArgs = []
+        if (headers && typeof headers === 'object') {
+            for (const [key, value] of Object.entries(http_headers)) {
+               headerArgs.push('--add-header', `${key}: ${value}`);
+               }
+             }
+             
+             console.log(headerArgs)
 
-        const ytdlpArg = [url, "-f", format, "--merge-output-format", "mkv", "--no-playlist", "--ffmpeg-location", ffmpegPath, "--add-header", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "--add-header", "Accept-Language:en-US,en;q=0.9", "--add-header", `Referer: ${domain}`, "-o", "-", "--no-progress"]
+        // const ytdlpArg = [url, "-f", format, "--merge-output-format", "mkv", "--no-playlist", "--ffmpeg-location", ffmpegPath, "--add-header", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "--add-header", "Accept-Language:en-US,en;q=0.9", "--add-header", `Referer: ${domain}`, "-o", "-", "--no-progress"]
+        
+        const ytdlpArg = [ '-f', format, '--merge-output-format', 'mp4', ...headerArgs, '-o', outputPath, url
+  ];
 
         const yt = spawn(ytDlpPath, ytdlpArg)
         
@@ -89,6 +103,9 @@ const downloadVideoFunction = async (req, res) => {
         })
         yt.on("close", async (code) => {
             if (code !== 0) {
+                if (fs.existsSync(outputPath)) {
+                    fs.unlink(outputPath, () => {});
+                }
                 console.log("yt-dlp exited with code: ", code)
                 if (!res.writableEnded) {
                     console.log("failed alert sent")
@@ -99,6 +116,9 @@ const downloadVideoFunction = async (req, res) => {
                 }
             }
             console.log(`code: ${code}`)
+            res.download(outputPath, () => {
+                  fs.unlink(outputPath, () => {});
+                });
         })   
         
     } catch (e) {
