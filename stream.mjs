@@ -3,8 +3,14 @@ import cors from 'cors'
 import route from "./routes/routes.mjs"
 
 const app = express()
+
+const origin = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+     ""
+    ]
 app.use(cors({
-    origin: "",
+    origin: origin,
     credentials: true
 }))
 

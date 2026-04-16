@@ -20,7 +20,7 @@ const start = (req, res) => {
 }
 
 const cancelJob = async (req, res) => {
-    const {id} = req.body
+    const id = req.body.id
 
     const job = jobs.id
     console.log(`${job.state} \n ${id}`)
