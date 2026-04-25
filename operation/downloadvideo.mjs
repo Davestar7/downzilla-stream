@@ -3,7 +3,7 @@ import fs from 'fs';
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto"
-import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject} from "./dependencies.mjs"
+import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, chooseFormat} from "./dependencies.mjs"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,26 +40,8 @@ const downloadVideoFunction = async (req, res) => {
                 message: "no audio format found"
             })
         }
-    } else {
-        if (!url || !format_id) {
-            console.log("failed first condition")
-            return res.status(400).json({
-                success: false,
-                message: "missing parameters"
-            })
-        }
-        console.log("format proceed")
-
-        forFormat = selectaudioformat(formats)
-        if (forFormat === null) {
-            console.log("failed second condition: ", forFormat)
-            return res.status(400).json({
-                success: false,
-                message: "no audio format found"
-            })
-        }
-    }
-    const audio_id = forFormat.format_id
+    } 
+    // const audio_id = forFormat.format_id
 
     const domain = getMainDomain(url)
     let yt
@@ -72,9 +54,10 @@ const downloadVideoFunction = async (req, res) => {
 
 
     try {   
-        console.log("audioId: ", audio_id, "formatId: ", format_id, "timer: ", start, "-to-", end)
-        let format = audio_id ? `${for_id}+${audio_id}` : `${format_id}+bestaudio`
-        console.log(`format: ${format}`)
+        const formatc = chooseFormat(Number(height))
+        // console.log("audioId: ", audio_id, "formatId: ", format_id, "timer: ", start, "-to-", end)
+        // let format = audio_id ? `${for_id}+${audio_id}` : `${format_id}+bestaudio`
+        console.log(`format: ${formatc}`)
         // format = `bv*[height<=1080][ext=mp4]+ba[ext=m4a]`
 
         await res.setHeader("Content-Type", "video/mp4");
@@ -100,7 +83,7 @@ const downloadVideoFunction = async (req, res) => {
 
         // const ytdlpArg = [ '-f', format || 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s'), url];
         // const ytdlpArg = [ url, '-f', format || 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
-        const ytdlpArg = [ url, '-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
+        const ytdlpArg = [ url, '-f', formatc, '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
 
         yt = spawn(ytDlpPath, ytdlpArg, {
             stdio: "inherit",

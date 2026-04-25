@@ -1,3 +1,5 @@
+import { spawn } from "child_process";
+import crypto from "crypto"
 
 const jobs = new Map()
 
@@ -19,47 +21,57 @@ const start = (req, res) => {
     })
 }
 
-const cancelJob = async (req, res) => {
-    const id = req.body.id
+const cancelJob = async(req, res) => {
+    try {
+        console.log(req.headers)
+        const id = req.headers["x-operation-id"]
+        console.log(`id to cancel job: ${id}`)
 
-    const job = jobs.id
-    console.log(`${job.state} \n ${id}`)
-    if (!job) {
-        return res.status(404).json({
-            success: false,
-            message: "failed to cancel couse proccess not found"
-        })
-    }
-
-    if (job.process) {
-        if (process.platform === "win32") {
-                try {
-                    await spawn("taskkill", ["/pid", job.process.pid, "/f", "/t"])
-                    res.status(200).json({
-                        message: "cancelled successfully"
-                    })
-                } catch (e) {
-                    res.status(500).json({
-                        message: "error trying to cancel on win32"
-                    })
-                }
-            } else {
-                try {
-                    await job.process.kill("SIGKILL")
-                    res.status(200).json({
-                        message: "cancelled sussefully!"
-                    })
-                } catch (e) {
-                    res.status(500).json({
-                        message: "error cancelling prccess"
-                    })
-                }
+        const job = jobs.get(id)
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                message: "failed to cancel couse proccess not found"
+            })
         }
 
-        jobs.delete(body.id)
-    } else {
-        res.status(404).json({
-            message: "this activity was not found!"
+        if (job.process) {
+            if (process.platform === "win32") {
+                    try {
+                        await spawn("taskkill", ["/pid", job.process.pid, "/f", "/t"])
+                        jobs.delete(id)
+                        res.status(200).json({
+                            message: "cancelled successfully"
+                        })
+                    } catch (e) {
+                        res.status(500).json({
+                            message: "error trying to cancel on win32"
+                        })
+                    }
+                } else {
+                    try {
+                        await job.process.kill("SIGKILL")
+                        jobs.delete(id)
+                        res.status(200).json({
+                            message: "cancelled sussefully!"
+                        })
+                    } catch (e) {
+                        res.status(500).json({
+                            message: "error cancelling prccess"
+                        })
+                    }
+            }
+
+        } else {
+            res.status(404).json({
+                message: "this activity was not found!"
+            })
+        }
+    } catch (e) {
+        console.log(`error cancelling: ${e.message}`)
+        res.status(500).json({
+            success: false,
+            message: e.message
         })
     }
 }

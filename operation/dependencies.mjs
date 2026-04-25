@@ -107,4 +107,14 @@ function getMainDomain(irl) {
     return path
 }
 
-export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments}
+function chooseFormat(ff = null) {
+    if (!ff) return 'bestvideo+bestaudio/best'
+
+    if (ff > 144 && ff <= 1080){
+        return `bestvideo[height<=${ff}][ext=m4a]+bestaudio[ext=m4a]/best[height<=${ff}]`
+    } else {
+        return 'bestvideo+bestaudio/best'
+    }
+}
+
+export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments, chooseFormat}
