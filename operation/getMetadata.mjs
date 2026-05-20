@@ -5,9 +5,11 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const isWindows = process.platform === "win32";
 
-const ytDlpPath = path.join(__dirname, "../bin", "yt-dlp.exe");
-// const ytDlpPathOld = path.join(__dirname, "../bin", "yt-dlp-old.exe");
+const ytDlpPath = isWindows
+  ? path.join(__dirname, "bin", "yt-dlp.exe")
+  : path.join(__dirname, "yt-dlp");
 
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
