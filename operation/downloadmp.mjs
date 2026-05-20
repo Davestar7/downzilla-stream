@@ -7,10 +7,16 @@ import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const isWindows = process.platform === "win32";
 
-const ytDlpPath = (process.platform === 'win32' ? path.join(__dirname, "../bin", "yt-dlp.exe") : path.join(__dirname, '../bin', 'yt-dlp'))
+const ytDlpPath = isWindows
+  ? path.join(__dirname, "bin", "yt-dlp.exe")
+  : path.join(__dirname, "yt-dlp");
 
-const ffmpegPath = process.env.FFMPEG_PATH || (process.platform === 'win32' ? path.join(__dirname, "../ffmpeg-n8.0-7-g4f8b3891ee-win64-lgpl-shared-8.0/bin", "ffmpeg.exe") : '/usr/bin/ffmpeg');
+const ffmpegPath = isWindows
+  ? path.join(__dirname, "ffmpeg-n8.0-7-g4f8b3891ee-win64-lgpl-shared-8.0", "bin", "ffmpeg.exe")
+  : path.join(__dirname, "ffmpeg");
+
 const tempPath = path.join(__dirname, "temp")
 
 const downloadMPFunction = async (req, res) => {
