@@ -1,5 +1,4 @@
 node_modules/
 .env
-ffmpeg
-yt-dlp
-ffmpeg.tar.xz
+bin/
+ffmpeg-n8.0-7-g4f8b3891ee-win64-lgpl-shared-8.0/
