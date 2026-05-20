@@ -15,7 +15,7 @@ const tempPath = path.join(__dirname, "temp")
 
 const downloadMPFunction = async (req, res) => {
     const { url, title, format_id, ext, formats, headers} = req.body
-    console.log(`url: ${url}`)
+    
     if (!url) {
         return res.status(400).json({
             success: false,
@@ -46,16 +46,13 @@ const downloadMPFunction = async (req, res) => {
     const outputPath = path.join(tempPath, `${name.toLowerCase()}-${id}.mp3`);
 
     let headerArgs = []
-    console.log(headers)
+    
     if (headers && typeof headers === "object") {
         for (const [key, value] of Object.entries(headers)) {
-            console.log(`headers: key ${key}, value ${value} `)
             headerArgs.push('--add-header', `${key}: ${value}`);
         }
     }
-             
-        console.log(headerArgs)
-
+    
     let yt
 
     try {
@@ -66,7 +63,6 @@ const downloadMPFunction = async (req, res) => {
         const args = [ url, '-f', 'bestaudio[ext=m4a]/bestaudio/best', "-x", "--audio-format", 'mp3', "--audio-quality", "0", "--postprocessor-args", "ffmpeg:-vn", "--extractor-args", 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp3', '.%(ext)s')];
         yt = spawn(ytDlpPath, args)
     } catch (e) {
-        console.log(`error runing download ${e}`)
         if (fs.existsSync(outputPath)) {
             fs.unlink(outputPath, () => {});
         }
@@ -84,7 +80,6 @@ const downloadMPFunction = async (req, res) => {
     })
 
     yt.on("close", code => {
-        console.log(`exited with code ${code}`)
         if (code !== 0) {
             if (fs.existsSync(outputPath)) {
                 fs.unlink(outputPath, () => {});
@@ -101,9 +96,8 @@ const downloadMPFunction = async (req, res) => {
     })
 
     yt.on("error", err => {
-        console.log(`failed with error: ${err}`)
         if (!res.writableEnded) {
-            res.status(500).end("internal error")
+            res.status(500).end(`internal error: ${err.message}`)
         }
     })
 }

@@ -19,10 +19,8 @@ const downloadVideoFunction = async (req, res) => {
     let forFormat;
     let for_id = format_id
 
-    console.log(`type of format ${typeof height} - ${height}`)
     const newHeight = getHeightFromString(height)
-    console.log(`new height type ${typeof newHeight} - ${newHeight}`)
-
+    
     if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
         const selected = selectvideoformat(formats)
         if (selected === null) {
@@ -43,7 +41,7 @@ const downloadVideoFunction = async (req, res) => {
     } 
     // const audio_id = forFormat.format_id
 
-    const domain = getMainDomain(url)
+    // const domain = getMainDomain(url)
     let yt
 
     let newtitle = sanname(title).toString().toLowerCase().trim()
@@ -57,7 +55,6 @@ const downloadVideoFunction = async (req, res) => {
         const formatc = chooseFormat(Number(height))
         // console.log("audioId: ", audio_id, "formatId: ", format_id, "timer: ", start, "-to-", end)
         // let format = audio_id ? `${for_id}+${audio_id}` : `${format_id}+bestaudio`
-        console.log(`format: ${formatc}`)
         // format = `bv*[height<=1080][ext=mp4]+ba[ext=m4a]`
 
         await res.setHeader("Content-Type", "video/mp4");
@@ -65,17 +62,14 @@ const downloadVideoFunction = async (req, res) => {
         // const trimArg = `ffmpeg:-ss ${start} -to ${end} -map 0:v -map 0:a`
         
         let headerArgs = []
-        console.log(typeof headers)
-        console.log(headers)
+        
         if (headers && typeof headers === "object") {
             for (const [key, value] of Object.entries(headers)) {
-                console.log(`headers: key ${key}, value ${value} `)
                 headerArgs.push('--add-header', `${key}: ${value}`);
                }
              }
              
-        console.log(headerArgs)
-
+        
         // const ytdlpArg = [url, "-f", format, "--merge-output-format", "mkv", "--no-playlist", "--ffmpeg-location", ffmpegPath, "--add-header", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "--add-header", "Accept-Language:en-US,en;q=0.9", "--add-header", `Referer: ${domain}`, "-o", "-", "--no-progress"]
         
         // const nodePath = process.platform === 'win32' ? process.execPath : '/usr/user/bin'
@@ -90,7 +84,6 @@ const downloadVideoFunction = async (req, res) => {
             cwd: __dirname
         })
     } catch (e) {
-        console.log(`error runing download ${e}`)
         if (fs.existsSync(outputPath)) {
             fs.unlink(outputPath, () => {});
         }
@@ -108,14 +101,12 @@ const downloadVideoFunction = async (req, res) => {
         yt.kill("SIGKILL")
     })
     yt.on("close", async (code) => {
-        console.log(`code: ${code}`)
         if (code !== 0) {
             if (fs.existsSync(outputPath)) {
                 fs.unlink(outputPath, () => {});
             }
-            console.log("yt-dlp exited with code: ", code)
+            
             if (!res.writableEnded) {
-                console.log("failed alert sent")
                 return res.status(500).json({
                     success: false,
                     message: "download failed"

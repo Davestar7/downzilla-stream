@@ -6,7 +6,6 @@ const jobs = new Map()
 const start = (req, res) => {
     const id = crypto.randomUUID()
     const { url, type } = req.body
-    console.log(`${url} and the ${type} now create job`)
 
     jobs.set(id, {
         state: "created",
@@ -23,11 +22,10 @@ const start = (req, res) => {
 
 const cancelJob = async(req, res) => {
     try {
-        console.log(req.headers)
+        
         const id = req.headers["x-operation-id"]
-        console.log(`id to cancel job: ${id}`)
-
         const job = jobs.get(id)
+        
         if (!job) {
             return res.status(404).json({
                 success: false,
@@ -68,7 +66,7 @@ const cancelJob = async(req, res) => {
             })
         }
     } catch (e) {
-        console.log(`error cancelling: ${e.message}`)
+        console.log(e)
         res.status(500).json({
             success: false,
             message: e.message
