@@ -20,8 +20,10 @@ app.use("/v1/", route)
 
 const port = 7700
 
-app.listen(port, () => {
+app.listen(port, (req, res) => {
     console.log(`server live at http://localhost:${port}`)
+
+    res.send(`Downzilla Streaming service - <a href="https://downzilla.netlify.app">Home</a>`)
 })
 
 export default app
