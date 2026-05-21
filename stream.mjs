@@ -19,7 +19,7 @@ app.use(express.json())
 app.use("/v1/", route)
 app.get("/", (req, res) => {
   res.send(`Downzilla Streaming service - <a href="https://downzilla.netlify.app">Home</a>`)
-}
+})
 
 const port = 7700
 
