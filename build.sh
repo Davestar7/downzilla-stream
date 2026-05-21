@@ -12,12 +12,9 @@ chmod +x /app/operation/yt-dlp
 echo "✅ yt-dlp ready: $(/app/operation/yt-dlp --version)"
 
 echo "⬇️ Downloading ffmpeg..."
-curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
-  -o /tmp/ffmpeg.tar.xz
-tar -xf /tmp/ffmpeg.tar.xz --wildcards '*/ffmpeg' --strip-components=1 -C /tmp
-mv /tmp/ffmpeg /app/operation/ffmpeg
+curl -L https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-linux-x64 \
+  -o /app/operation/ffmpeg
 chmod +x /app/operation/ffmpeg
-rm /tmp/ffmpeg.tar.xz
 echo "✅ ffmpeg ready"
 
 echo "🎉 All binaries installed"
