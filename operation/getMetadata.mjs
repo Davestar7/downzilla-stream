@@ -105,7 +105,7 @@ const metadataExtractor = async (req, res) => {
         } catch (e) {
             theJob.state = "failed"
             jobs.delete(id)
-            res.status(400).json({message: e.message})
+            res.status(400).json({message: e})
         }
     } catch (e) {
         jobs.delete(id)
