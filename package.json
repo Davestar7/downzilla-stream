@@ -5,8 +5,8 @@
   "main": "stream.mjs",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "npm install",
-    "start": "node stream.mjs",
+    "build": "bash build.sh",
+    "start": "node stream.mjs"
     "dev": "nodemon stream.mjs"
   },
   "keywords": [],
