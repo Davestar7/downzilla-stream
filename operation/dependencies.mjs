@@ -1,4 +1,6 @@
 
+import dotenv from "dotenv";
+dotenv.config();
 
 function loopFormatForFormatObject(ff, id) {
     if (ff.length == 0) {
@@ -117,4 +119,26 @@ function chooseFormat(ff = null) {
     }
 }
 
-export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments, chooseFormat}
+const COOKIES_PATH = path.join('/tmp', 'cookies.txt');
+
+function ensureCookiesFile() {
+  // Check if cookies.txt already exists
+  if (fs.existsSync(COOKIES_PATH)) {
+    return COOKIES_PATH;
+  }
+
+  // Read from environment variable
+  const cookiesContent = process.env.COOKIES_TXT;
+
+  if (!cookiesContent) {
+    console.error('Error: COOKIES_TXT environment variable is not set.');
+    return "";
+  }
+
+  // Create the cookies.txt file
+  fs.writeFileSync(COOKIES_PATH, cookiesContent, 'utf8');
+  console.log('cookies.txt created successfully.');
+  return COOKIES_PATH;
+}
+
+export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments, chooseFormat, ensureCookiesFile}
