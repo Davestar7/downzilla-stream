@@ -3,7 +3,7 @@ import fs from 'fs';
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto"
-import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, chooseFormat} from "./dependencies.mjs"
+import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, chooseFormat, ensureCookiesFile} from "./dependencies.mjs"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,6 +62,8 @@ const downloadVideoFunction = async (req, res) => {
         // console.log("audioId: ", audio_id, "formatId: ", format_id, "timer: ", start, "-to-", end)
         // let format = audio_id ? `${for_id}+${audio_id}` : `${format_id}+bestaudio`
         // format = `bv*[height<=1080][ext=mp4]+ba[ext=m4a]`
+
+        const cookie = ensureCookiesFile()
 
         await res.setHeader("Content-Type", "video/mp4");
         await res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
