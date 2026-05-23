@@ -23,7 +23,7 @@ app.post('/downloadMp', startAudioDownload);
 
 app.get('/confirmmp', confirmAudioDownload);
 
-app.get('/audio/servemp', serveAudioDownload);
+app.get('/servemp', serveAudioDownload);
 
 route.post("/startstream", knowStreamer)
 
