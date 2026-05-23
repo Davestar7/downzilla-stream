@@ -19,7 +19,10 @@ const ffmpegPath = isWindows
 
 const tempPath = path.join(__dirname, "temp");
 
-const downloadVideoFunction = async(req, res) => {
+const processes = new Map();
+
+// Function 1 - Start download
+const startDownload = async (req, res) => {
     const {url, format_id, title, start, end, formats, height = null, headers} = req.body
 
     try {
@@ -41,6 +44,8 @@ const downloadVideoFunction = async(req, res) => {
 
         let newtitle = sanname(title).toString().toLowerCase().trim()
         const filename = (newtitle || "video") + "_downzilla.mp4"
+        const id = crypto.randomBytes(6).toString('hex');
+        const outputPath = path.join(tempPath, `${newtitle}-${id}.mp4`);
 
         const cookie = ensureCookiesFile()
 
@@ -51,42 +56,128 @@ const downloadVideoFunction = async(req, res) => {
             }
         }
 
-        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...headerArgs, '-o', '-'];
+        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...headerArgs, '-o', outputPath];
 
         const yt = spawn(ytDlpPath, ytdlpArg, {
             stdio: "pipe",
             cwd: __dirname
-        })
-
-        req.socket.setTimeout(0);
-        req.socket.setKeepAlive(true, 3000);
-        res.setTimeout(0);
-
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        res.setHeader("Transfer-Encoding", "chunked");
-        res.setHeader("X-Accel-Buffering", "no");
-
-        yt.stdout.pipe(res);
-
-        yt.on("close", (code) => {
-            if (!res.writableEnded) res.end();
         });
 
-        res.on("close", () => {
-            if (!res.writableEnded) yt.kill("SIGKILL");
+        // Store in processes map
+        processes.set(id, {
+            status: "processing", // processing | done | failed
+            outputPath,
+            filename,
+            yt
+        });
+
+        // Return job ID immediately
+        res.json({ success: true, jobId: id });
+
+        yt.on("close", (code) => {
+            const process = processes.get(id);
+            if (!process) return;
+
+            if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                process.status = "done";
+            } else {
+                process.status = "failed";
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+            }
+        });
+
+        yt.on("error", () => {
+            const process = processes.get(id);
+            if (process) {
+                process.status = "failed";
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+            }
         });
 
     } catch (e) {
-        console.log(e)
-        if (!res.writableEnded) {
-            res.status(500).json({
-                success: false,
-                message: e.message,
-            })
-        }
+        console.log(e);
+        res.status(500).json({ success: false, message: e.message });
     }
 }
+
+// Function 2 - Confirm if download is done
+const confirmDownload = async (req, res) => {
+    const { jobId } = req.query;
+
+    try {
+        if (!jobId) {
+            return res.status(400).json({ success: false, message: "jobId is required" });
+        }
+
+        const process = processes.get(jobId);
+
+        if (!process) {
+            return res.status(404).json({ success: false, message: "job not found" });
+        }
+
+        // Return current status - frontend keeps polling if still processing
+        if (process.status === "processing") {
+            return res.json({ success: true, done: false, status: "processing" });
+        }
+
+        if (process.status === "failed") {
+            processes.delete(jobId);
+            return res.json({ success: false, done: false, status: "failed", message: "download failed" });
+        }
+
+        if (process.status === "done") {
+            return res.json({ success: true, done: true, status: "done", jobId });
+        }
+
+    } catch (e) {
+        console.log(e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+}
+
+// Function 3 - Serve file when ready
+const serveDownload = async (req, res) => {
+    const { jobId } = req.query;
+
+    try {
+        if (!jobId) {
+            return res.status(400).json({ success: false, message: "jobId is required" });
+        }
+
+        const process = processes.get(jobId);
+
+        if (!process) {
+            return res.status(404).json({ success: false, message: "job not found" });
+        }
+
+        if (process.status !== "done") {
+            return res.status(400).json({ success: false, message: "download not ready yet" });
+        }
+
+        if (!fs.existsSync(process.outputPath)) {
+            processes.delete(jobId);
+            return res.status(404).json({ success: false, message: "file not found" });
+        }
+
+        res.download(process.outputPath, process.filename, (err) => {
+            if (err) console.log('serve error:', err);
+            if (fs.existsSync(process.outputPath)) fs.unlink(process.outputPath, () => {});
+            processes.delete(jobId);
+        });
+
+    } catch (e) {
+        console.log(e);
+        res.status(500).json({ success: false, message: e.message });
+    }
+}
+
+export { startDownload, confirmDownload, serveDownload };
+
+
+
+
+
+
 
 /*
 const downloadVideoFunction = async (req, res) => {
@@ -198,4 +289,4 @@ const downloadVideoFunction = async (req, res) => {
 }
 */
 
-export default downloadVideoFunction
+// export default downloadVideoFunction
