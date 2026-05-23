@@ -32,7 +32,7 @@ const knowStreamer = (req, res) => {
     }
     let header = headers
     if (!header) {
-      header = formats[0].https_headers
+      header = formats[0].http_headers
     }
     console.log(header)
     if (!header) {
