@@ -11,7 +11,7 @@ const isWindows = process.platform === "win32";
 
 const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
-  : "/app/operation/yt-dlp";
+  : '/usr/bin/ffmpeg';
 
 const ffmpegPath = isWindows
   ? path.join(__dirname, "ffmpeg-n8.0-7-g4f8b3891ee-win64-lgpl-shared-8.0", "bin", "ffmpeg.exe")
@@ -22,6 +22,7 @@ const tempPath = path.join(__dirname, "temp");
 const downloadVideoFunction = async (req, res) => {
     const {url, format_id, title, start, end, formats, height = null, headers} = req.body
 
+ try {
     let for_id = format_id
     const newHeight = getHeightFromString(height)
 
@@ -64,14 +65,6 @@ const downloadVideoFunction = async (req, res) => {
         req.socket.setKeepAlive(true, 3000);
         res.setTimeout(0);
 
-        yt.stderr.on('data', (data) => {
-          console.log('yt-dlp stderr:', data.toString());
-        });
-
-        yt.stdout.on('data', (data) => {
-          console.log('yt-dlp stdout:', data.toString());
-        });
-
         req.on("close", () => {
             yt.kill("SIGKILL");
             if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
@@ -98,6 +91,13 @@ const downloadVideoFunction = async (req, res) => {
             message: "error trying to download request: " + e
         })
     }
+  } catch (e) {
+    console.log(e)
+    res.status(500).json({
+       success: false,
+       message: e.message,
+    })
+  }
 }
 
 /*
