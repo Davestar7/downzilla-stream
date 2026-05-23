@@ -35,6 +35,12 @@ const knowStreamer = (req, res) => {
       header = formats[0].https_headers
     }
     console.log(header)
+    if (!header) {
+       return res.status(404).json({
+         success: false,
+         message: "header not found"
+       })
+     }
     const id = crypto.randomUUID()
 
     tk.set(id, {
