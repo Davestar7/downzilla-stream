@@ -2,6 +2,7 @@ import path from "path"
 import { spawn } from "child_process";
 import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
+import { ensureCookiesFile } from "./dependencies.mjs"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,9 +32,13 @@ const metadataExtractor = async (req, res) => {
 
         let argument = arg
 
+        const cookie = ensureCookiesFile()
+
         const outPut = new Promise(async (resolve, reject) => {
             let proc
             argument.push(url)
+            argument.push("cookie")
+            argument.push(cookie)
             
             if (type === "video") {
                 
