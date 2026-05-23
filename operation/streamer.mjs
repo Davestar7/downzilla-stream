@@ -23,6 +23,7 @@ const tk = new Map()
 
 const knowStreamer = (req, res) => {
     const { url, title, formats, height = null, headers } = req.body
+    console.log(req.body)
     
     if (!url || !title || !formats || !headers) {
         return res.status(400).json({
