@@ -23,14 +23,18 @@ const tk = new Map()
 
 const knowStreamer = (req, res) => {
     const { url, title, formats, height = null, headers } = req.body
-    console.log(req.body)
     
-    if (!url || !title || !formats || !headers) {
+    if (!url || !title || !formats) {
         return res.status(400).json({
             success: false,
             message: "failed incomplete data"
         })
     }
+    let header = headers
+    if (!header) {
+      header = formats[0].https_headers
+    }
+    console.log(header)
     const id = crypto.randomUUID()
 
     tk.set(id, {
@@ -39,7 +43,7 @@ const knowStreamer = (req, res) => {
         title: title,
         formats: formats,
         height: height,
-        headers: headers,
+        headers: header,
         yt: null,
         outputFile: null
     })
