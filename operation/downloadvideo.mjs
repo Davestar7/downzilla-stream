@@ -23,7 +23,7 @@ const processes = new Map();
 
 const startDownload = async (req, res) => {
     const {url, format_id, title, start, end, formats, height = null, headers} = req.body
-    console.log("resived request")
+    
     try {
         let for_id = format_id
         const newHeight = getHeightFromString(height)
@@ -74,7 +74,7 @@ const startDownload = async (req, res) => {
         res.json({ success: true, jobId: id });
 
         yt.on("close", (code) => {
-            console.log("supposed finished request")
+            
             const process = processes.get(id);
             if (!process) return;
 
@@ -96,7 +96,7 @@ const startDownload = async (req, res) => {
         });
 
     } catch (e) {
-        console.log(e);
+        
         res.status(500).json({ success: false, message: e.message });
     }
 }
@@ -104,7 +104,7 @@ const startDownload = async (req, res) => {
 
 const confirmDownload = async (req, res) => {
     const { jobId } = req.query;
-    console.log(`comfirm job query: ${jobId}`)
+   
 
     try {
         if (!jobId) {
@@ -119,7 +119,7 @@ const confirmDownload = async (req, res) => {
 
         // Return current status - frontend keeps polling if still processing
         if (process.status === "processing") {
-            console.log("processing download")
+            
             return res.json({ success: true, done: false, status: "processing" });
         }
 
@@ -141,7 +141,7 @@ const confirmDownload = async (req, res) => {
 
 const serveDownload = async (req, res) => {
     const { jobId } = req.query;
-    console.log("query to download: "+jobId)
+    
     try {
         if (!jobId) {
             return res.status(400).json({ success: false, message: "jobId is required" });
