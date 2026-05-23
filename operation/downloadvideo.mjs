@@ -41,8 +41,6 @@ const downloadVideoFunction = async(req, res) => {
 
         let newtitle = sanname(title).toString().toLowerCase().trim()
         const filename = (newtitle || "video") + "_downzilla.mp4"
-        const id = crypto.randomBytes(6).toString('hex');
-        const outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
 
         const cookie = ensureCookiesFile()
 
@@ -53,7 +51,7 @@ const downloadVideoFunction = async(req, res) => {
             }
         }
 
-        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...headerArgs, '-o', outputPath];
+        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...headerArgs, '-o', '-'];
 
         const yt = spawn(ytDlpPath, ytdlpArg, {
             stdio: "pipe",
@@ -64,39 +62,29 @@ const downloadVideoFunction = async(req, res) => {
         req.socket.setKeepAlive(true, 3000);
         res.setTimeout(0);
 
-        yt.stderr.on('data', (data) => {
-            console.log('yt-dlp:', data.toString());
-        });
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Transfer-Encoding", "chunked");
+        res.setHeader("X-Accel-Buffering", "no");
 
-        // Kill yt-dlp only if response is closed before download finishes
-        res.on("close", () => {
-            if (!res.writableEnded) {
-                yt.kill("SIGKILL");
-                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
-            }
-        });
+        yt.stdout.pipe(res);
 
         yt.on("close", (code) => {
-            if (code !== 0) {
-                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
-                if (!res.writableEnded) {
-                    return res.status(500).json({ success: false, message: "download failed" });
-                }
-                return;
-            }
+            if (!res.writableEnded) res.end();
+        });
 
-            res.download(outputPath, filename, (err) => {
-                if (err) console.log('download error:', err);
-                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
-            });
+        res.on("close", () => {
+            if (!res.writableEnded) yt.kill("SIGKILL");
         });
 
     } catch (e) {
         console.log(e)
-        res.status(500).json({
-            success: false,
-            message: e.message,
-        })
+        if (!res.writableEnded) {
+            res.status(500).json({
+                success: false,
+                message: e.message,
+            })
+        }
     }
 }
 
