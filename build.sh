@@ -6,9 +6,11 @@ echo "📁 Creating operation directory..."
 mkdir -p /app/operation
 
 echo "⬇️ Downloading yt-dlp..."
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
-  -o /app/operation/yt-dlp
-chmod +x /app/operation/yt-dlp
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp
+
+# Make it executable
+chmod a+rx /app/operation/yt-dlp
+
 echo "✅ yt-dlp ready: $(/app/operation/yt-dlp --version)"
 
 echo "⬇️ Downloading ffmpeg..."
