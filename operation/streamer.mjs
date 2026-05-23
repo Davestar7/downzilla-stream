@@ -152,7 +152,6 @@ const stream = async (req, res) => {
         
         yt.on('close', (code) => {
                clearInterval(heartbeat);
-               clearInterval(interva);
     
              if (code !== 0) {
                if (fs.existsSync(outputPath))   fs.unlink(outputPath, () => {});
