@@ -21,6 +21,80 @@ const tempPath = path.join(__dirname, "temp");
 
 const downloadVideoFunction = async (req, res) => {
     const {url, format_id, title, start, end, formats, height = null, headers} = req.body
+
+    let for_id = format_id
+    const newHeight = getHeightFromString(height)
+
+    if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
+        const selected = selectvideoformat(formats)
+        if (selected === null) {
+            return res.status(400).json({ success: false, message: "downloadable format not found" })
+        }
+        for_id = selected.format_id
+
+        const forFormat = selectaudioformat(formats)
+        if (forFormat === null) {
+            return res.status(400).json({ success: false, message: "no audio format found" })
+        }
+    } 
+
+    let newtitle = sanname(title).toString().toLowerCase().trim()
+    const filename = (newtitle || "video") + "_downzilla.mp4"
+    const id = crypto.randomBytes(6).toString('hex');
+    const outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
+
+    try {   
+        const cookie = ensureCookiesFile()
+
+        let headerArgs = []
+        if (headers && typeof headers === "object") {
+            for (const [key, value] of Object.entries(headers)) {
+                headerArgs.push('--add-header', `${key}: ${value}`);
+            }
+        }
+
+        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...headerArgs, '-o', outputPath];
+
+        const yt = spawn(ytDlpPath, ytdlpArg, {
+            stdio: "pipe",
+            cwd: __dirname
+        })
+
+        req.socket.setTimeout(0);
+        req.socket.setKeepAlive(true, 3000);
+        res.setTimeout(0);
+
+        req.on("close", () => {
+            yt.kill("SIGKILL");
+            if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+        });
+
+        yt.on("close", (code) => {
+            if (code !== 0) {
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+                if (!res.writableEnded) {
+                    return res.status(500).json({ success: false, message: "download failed" });
+                }
+                return;
+            }
+
+            res.download(outputPath, filename, (err) => {
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+            });
+        });
+
+    } catch (e) {
+        if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+        return res.status(501).json({
+            success: false,
+            message: "error trying to download request: " + e
+        })
+    }
+}
+
+/*
+const downloadVideoFunction = async (req, res) => {
+    const {url, format_id, title, start, end, formats, height = null, headers} = req.body
     
     let forFormat;
     let for_id = format_id
@@ -126,5 +200,6 @@ const downloadVideoFunction = async (req, res) => {
             });
     })   
 }
+*/
 
 export default downloadVideoFunction
