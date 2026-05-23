@@ -43,7 +43,8 @@ const metadataExtractor = async (req, res) => {
             
             if (type === "video") {
                 
-                proc = spawn(ytDlpPath, ['--cookies', cookie, '--dump-json', url], {
+                proc = spawn(ytDlpPath, ['--cookies', cookie, '--dump-json', '--extractor-args', 'youtube:player_client=ios',
+  url], {
                     stdio: ["ignore", "pipe", "pipe"]
                 })
             } else if (type === "playlist") {
