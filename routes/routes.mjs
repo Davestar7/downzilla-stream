@@ -19,11 +19,11 @@ route.get("/checkDownload", confirmDownload)
 
 route.get("/download", serveDownload)
 
-app.post('/downloadMp', startAudioDownload);
+route.post('/downloadMp', startAudioDownload);
 
-app.get('/confirmmp', confirmAudioDownload);
+route.get('/confirmmp', confirmAudioDownload);
 
-app.get('/servemp', serveAudioDownload);
+route.get('/servemp', serveAudioDownload);
 
 route.post("/startstream", knowStreamer)
 
