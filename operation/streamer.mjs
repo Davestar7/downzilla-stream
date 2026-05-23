@@ -123,7 +123,8 @@ const stream = async (req, res) => {
         const cookie = ensureCookiesFile()
                 
             
-            const ytdlpArg = [ url, '-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--cookies', cookie, '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
+            // const ytdlpArg = [ url, '-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--cookies', cookie, '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
+           const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=web,mweb', '--cookies', cookie, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
 
             yt = spawn(ytDlpPath, ytdlpArg, {
                 stdio: "inherit",
