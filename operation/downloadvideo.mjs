@@ -64,6 +64,14 @@ const downloadVideoFunction = async (req, res) => {
         req.socket.setKeepAlive(true, 3000);
         res.setTimeout(0);
 
+        yt.stderr.on('data', (data) => {
+          console.log('yt-dlp stderr:', data.toString());
+        });
+
+        yt.stdout.on('data', (data) => {
+          console.log('yt-dlp stdout:', data.toString());
+        });
+
         req.on("close", () => {
             yt.kill("SIGKILL");
             if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
