@@ -37,7 +37,7 @@ const metadataExtractor = async (req, res) => {
         const outPut = new Promise(async (resolve, reject) => {
             let proc
             argument.push(url)
-            argument.push("cookie")
+            argument.push("--cookie")
             argument.push(cookie)
             
             if (type === "video") {
