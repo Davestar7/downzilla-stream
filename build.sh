@@ -1,24 +1,22 @@
 #!/bin/bash
 
-set -e  # Exit on any error
+echo "Starting build..."
 
-echo "📁 Creating operation directory..."
-mkdir -p /app/operation
+# Install Python and ffmpeg
+apt-get update && apt-get install -y python3 python3-pip ffmpeg
 
-apt-get install -y python3
-
-echo "⬇️ Downloading yt-dlp..."
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp
+# Download latest yt-dlp binary
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
 
 # Make it executable
-chmod a+rx /app/operation/yt-dlp
+chmod a+rx /usr/local/bin/yt-dlp
 
-echo "✅ yt-dlp ready: $(/app/operation/yt-dlp --version)"
+# Install npm dependencies
+npm install
 
-echo "⬇️ Downloading ffmpeg..."
-curl -L https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-linux-x64 \
-  -o /app/operation/ffmpeg
-chmod +x /app/operation/ffmpeg
-echo "✅ ffmpeg ready"
+# Verify installations
+echo "yt-dlp version: $(yt-dlp --version)"
+echo "ffmpeg version: $(ffmpeg -version | head -n 1)"
+echo "node version: $(node --version)"
 
-echo "🎉 All binaries installed"
+echo "Build complete!"
