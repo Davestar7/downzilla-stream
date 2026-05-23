@@ -145,7 +145,7 @@ const stream = async (req, res) => {
             
         const heartbeat = setInterval(() => {
            if (!res.writableEnded) {
-              res.write('');
+              res.write(Buffer.alloc(0));
             }
          }, 3000);
 
