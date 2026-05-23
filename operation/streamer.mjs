@@ -65,6 +65,133 @@ const stream = async (req, res) => {
 
     try {
         const job = tk.get(sid)
+
+        let outputPath
+
+        if (job?.yt && job?.outputFile) {
+            if (fs.existsSync(job.outputFile) && fs.statSync(job.outputFile).size > 0) {
+                streamer(job.outputFile)
+                return
+            }
+        }
+
+        const url = job.url
+        const title = job.title
+        const formats = job.formats
+        const height = job.height
+        const headers = job.headers
+
+        let forFormat;
+        let for_id
+        let formatc
+
+        const newHeight = getHeightFromString(height)
+
+        if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
+            const selected = selectvideoformat(formats)
+            if (selected === null) {
+                return res.status(400).json({
+                    success: false,
+                    message: "streamable format not found"
+                })
+            }
+
+            formatc = chooseFormat(Number(selected.height))
+        }
+
+        if (!formatc) {
+            formatc = chooseFormat(Number(height))
+        }
+
+        let newtitle = sanname(title).toString().toLowerCase().trim()
+
+        const id = crypto.randomBytes(6).toString('hex');
+        outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
+
+        let headerArgs = []
+        if (headers && typeof headers === "object") {
+            for (const [key, value] of Object.entries(headers)) {
+                headerArgs.push('--add-header', `${key}: ${value}`);
+            }
+        }
+
+        const cookie = ensureCookiesFile()
+
+        const ytdlpArg = [url, '--js-runtimes', 'node', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=web', '--cookies', cookie, ...headerArgs, '-o', '-'];
+
+        let yt
+
+        try {
+            yt = spawn(ytDlpPath, ytdlpArg, {
+                stdio: "pipe",
+                cwd: __dirname
+            })
+
+            job.yt = yt
+
+        } catch (e) {
+            tk.delete(sid)
+            return res.status(501).json({
+                success: false,
+                message: "error trying to download request: " + e
+            })
+        }
+
+        // Set headers immediately and pipe yt-dlp output directly to response
+        req.socket.setTimeout(0);
+        req.socket.setKeepAlive(true, 3000);
+        res.setTimeout(0);
+
+        res.writeHead(200, {
+            'Content-Type': 'video/mp4',
+            'Transfer-Encoding': 'chunked',
+            'X-Accel-Buffering': 'no'
+        });
+
+        // Pipe yt-dlp stdout directly to response as it downloads
+        yt.stdout.pipe(res);
+
+        yt.stderr.on('data', (data) => {
+            console.log('yt-dlp:', data.toString());
+        });
+
+        yt.on('close', (code) => {
+            if (code !== 0) {
+                console.error('yt-dlp exited with code:', code);
+            }
+            res.end();
+            setTimeout(() => {
+                if (fs.existsSync(outputPath)) {
+                    fs.unlink(outputPath, () => {});
+                }
+                tk.delete(sid)
+            }, 600000);
+        });
+
+        res.on('close', () => {
+            yt.kill('SIGKILL');
+            setTimeout(() => {
+                if (fs.existsSync(outputPath)) {
+                    fs.unlink(outputPath, () => {});
+                }
+                tk.delete(sid);
+            }, 600000);
+        });
+
+    } catch (e) {
+        tk.delete(sid)
+        res.status(500).json({
+            message: `Error streaming: ${e.message}`
+        })
+    }
+}
+
+/*
+const stream = async (req, res) => {
+    const { sid } = req.query
+
+    try {
+        const job = tk.get(sid)
         
         let outputPath
 
@@ -240,5 +367,6 @@ const stream = async (req, res) => {
         })
     }
 }
+*/
 
 export {stream, knowStreamer}
