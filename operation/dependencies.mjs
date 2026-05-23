@@ -129,7 +129,7 @@ function ensureCookiesFile() {
   }
 
   // Read from environment variable
-  const cookiesContent = process.env.COOKIES_TXT;
+  const cookiesContent = process.env.COOKIESTXT;
 
   if (!cookiesContent) {
     console.error('Error: COOKIES_TXT environment variable is not set.');
