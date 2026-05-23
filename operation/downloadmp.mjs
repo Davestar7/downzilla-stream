@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import fs from "fs"
-import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject} from "./dependencies.mjs"
+import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, chooseFormat, ensureCookiesFile} from "./dependencies.mjs"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,8 +65,10 @@ const downloadMPFunction = async (req, res) => {
         await res.setHeader("Content-Disposition", `attachment; filename="${filename}-downzilla.${extformat ||"mp3"}"`)
         await res.setHeader("Content-Type", "audio/mpeg")
 
+        const cookie = ensureCookiesFile()
+
         // const args = [url, "-f", format, "-x", "--audio-format", "mp3", "-o", "-"]
-        const args = [ url, '-f', 'bestaudio[ext=m4a]/bestaudio/best', "-x", "--audio-format", 'mp3', "--audio-quality", "0", "--postprocessor-args", "ffmpeg:-vn", "--extractor-args", 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp3', '.%(ext)s')];
+        const args = [ url, '-f', 'bestaudio[ext=m4a]/bestaudio/best', "-x", "--audio-format", 'mp3', "--audio-quality", "0", "--postprocessor-args", "ffmpeg:-vn", "--extractor-args", 'youtube:player_client=android', '--cookies', cookie, '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp3', '.%(ext)s')];
         yt = spawn(ytDlpPath, args)
     } catch (e) {
         if (fs.existsSync(outputPath)) {
