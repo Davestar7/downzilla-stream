@@ -2,7 +2,7 @@ import express from "express"
 import {start, cancelJob} from "../tracker/track.mjs"
 import { metadataExtractor } from "../operation/getMetadata.mjs"
 import downloadMPFunction from "../operation/downloadmp.mjs"
-import downloadVideoFunction from "../operation/downloadvideo.mjs"
+import { startDownload, confirmDownload, serveDownload } from "../operation/downloadvideo.mjs"
 import {stream, knowStreamer} from "../operation/streamer.mjs"
 
 const route = express.Router()
@@ -13,7 +13,11 @@ route.get("/cancel", cancelJob)
 
 route.post("/getMetadata", metadataExtractor)
 
-route.post("/downloadVideo", downloadVideoFunction)
+route.post("/downloadVideo", startDownload)
+
+route.get("/checkDownload/:id", confirmDownload)
+
+route.get("/download/:id", serveDownload)
 
 route.post("/downloadMp", downloadMPFunction)
 
