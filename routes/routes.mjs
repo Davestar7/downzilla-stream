@@ -21,7 +21,7 @@ route.get("/download", serveDownload)
 
 route.post('/downloadMp', startAudioDownload);
 
-route.get('/confirmmp', confirmAudioDownload);
+route.get('/comfirmmp', confirmAudioDownload);
 
 route.get('/servemp', serveAudioDownload);
 
