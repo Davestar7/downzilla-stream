@@ -150,7 +150,15 @@ const stream = async (req, res) => {
          }, 5000);
 
         
-
+        yt.on('close', (code) => {
+               clearInterval(heartbeat);
+               clearInterval(interva);
+    
+             if (code !== 0) {
+               if (fs.existsSync(outputPath))   fs.unlink(outputPath, () => {});
+              tk.delete(sid);
+              return res.status(500).json({ success: false, message: 'Download failed' });
+    }
     streamer(outputPath);
 });
 
@@ -190,7 +198,7 @@ const stream = async (req, res) => {
         }
 
         try {
-            // await res.on("close", () => {
+             await res.on("close", () => {
                 setTimeout(() => {
                     if (fs.existsSync(job.outputFile)) {
                         fs.unlink(job.outputFile, () => {});
@@ -199,16 +207,8 @@ const stream = async (req, res) => {
                 }, 600000);
                 yt.kill("SIGKILL") 
         
-            })//
-            yt.on('close', (code) => {
-               clearInterval(heartbeat);
-               clearInterval(interva);
-    
-             if (code !== 0) {
-               if (fs.existsSync(outputPath))   fs.unlink(outputPath, () => {});
-              tk.delete(sid);
-              return res.status(500).json({ success: false, message: 'Download failed' });
-    }
+            })
+            
         } catch (e) {
             tk.delete(sid)
             yt.kill("SIGKILL")
