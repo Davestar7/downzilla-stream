@@ -15,9 +15,9 @@ route.post("/getMetadata", metadataExtractor)
 
 route.post("/downloadVideo", startDownload)
 
-route.get("/checkDownload/:id", confirmDownload)
+route.get("/checkDownload", confirmDownload)
 
-route.get("/download/:id", serveDownload)
+route.get("/download", serveDownload)
 
 route.post("/downloadMp", downloadMPFunction)
 
