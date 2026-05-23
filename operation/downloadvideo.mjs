@@ -19,32 +19,31 @@ const ffmpegPath = isWindows
 
 const tempPath = path.join(__dirname, "temp");
 
-const downloadVideoFunction = async (req, res) => {
+const downloadVideoFunction = async(req, res) => {
     const {url, format_id, title, start, end, formats, height = null, headers} = req.body
 
- try {
-    let for_id = format_id
-    const newHeight = getHeightFromString(height)
+    try {
+        let for_id = format_id
+        const newHeight = getHeightFromString(height)
 
-    if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
-        const selected = selectvideoformat(formats)
-        if (selected === null) {
-            return res.status(400).json({ success: false, message: "downloadable format not found" })
-        }
-        for_id = selected.format_id
+        if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
+            const selected = selectvideoformat(formats)
+            if (selected === null) {
+                return res.status(400).json({ success: false, message: "downloadable format not found" })
+            }
+            for_id = selected.format_id
 
-        const forFormat = selectaudioformat(formats)
-        if (forFormat === null) {
-            return res.status(400).json({ success: false, message: "no audio format found" })
-        }
-    } 
+            const forFormat = selectaudioformat(formats)
+            if (forFormat === null) {
+                return res.status(400).json({ success: false, message: "no audio format found" })
+            }
+        } 
 
-    let newtitle = sanname(title).toString().toLowerCase().trim()
-    const filename = (newtitle || "video") + "_downzilla.mp4"
-    const id = crypto.randomBytes(6).toString('hex');
-    const outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
+        let newtitle = sanname(title).toString().toLowerCase().trim()
+        const filename = (newtitle || "video") + "_downzilla.mp4"
+        const id = crypto.randomBytes(6).toString('hex');
+        const outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
 
-    try {   
         const cookie = ensureCookiesFile()
 
         let headerArgs = []
@@ -65,9 +64,16 @@ const downloadVideoFunction = async (req, res) => {
         req.socket.setKeepAlive(true, 3000);
         res.setTimeout(0);
 
-        req.on("close", () => {
-            yt.kill("SIGKILL");
-            if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+        yt.stderr.on('data', (data) => {
+            console.log('yt-dlp:', data.toString());
+        });
+
+        // Kill yt-dlp only if response is closed before download finishes
+        res.on("close", () => {
+            if (!res.writableEnded) {
+                yt.kill("SIGKILL");
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+            }
         });
 
         yt.on("close", (code) => {
@@ -80,24 +86,18 @@ const downloadVideoFunction = async (req, res) => {
             }
 
             res.download(outputPath, filename, (err) => {
+                if (err) console.log('download error:', err);
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
             });
         });
 
     } catch (e) {
-        if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
-        return res.status(501).json({
+        console.log(e)
+        res.status(500).json({
             success: false,
-            message: "error trying to download request: " + e
+            message: e.message,
         })
     }
-  } catch (e) {
-    console.log(e)
-    res.status(500).json({
-       success: false,
-       message: e.message,
-    })
-  }
 }
 
 /*
