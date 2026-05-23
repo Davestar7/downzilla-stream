@@ -34,7 +34,7 @@ const knowStreamer = (req, res) => {
     if (!header) {
       header = formats[0].http_headers
     }
-    console.log(header)
+    
     if (!header) {
        return res.status(404).json({
          success: false,
