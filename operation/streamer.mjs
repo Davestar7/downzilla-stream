@@ -147,7 +147,7 @@ const stream = async (req, res) => {
            if (!res.writableEnded) {
               res.write('');
             }
-         }, 5000);
+         }, 3000);
 
         
         yt.on('close', (code) => {
@@ -157,7 +157,7 @@ const stream = async (req, res) => {
                if (fs.existsSync(outputPath))   fs.unlink(outputPath, () => {});
               tk.delete(sid);
               return res.status(500).json({ success: false, message: 'Download failed' });
-    }
+         }
     streamer(outputPath);
 });
 
