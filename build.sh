@@ -5,6 +5,8 @@ set -e  # Exit on any error
 echo "📁 Creating operation directory..."
 mkdir -p /app/operation
 
+apt-get install -y python3
+
 echo "⬇️ Downloading yt-dlp..."
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp
 
