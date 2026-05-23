@@ -3,7 +3,7 @@ import fs from 'fs';
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto"
-import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, chooseFormat} from "./dependencies.mjs"
+import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, chooseFormat, ensureCookiesFile} from "./dependencies.mjs"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,9 +108,11 @@ const stream = async (req, res) => {
                     headerArgs.push('--add-header', `${key}: ${value}`);
                 }
             }
+
+        const cookie = ensureCookiesFile()
                 
             
-            const ytdlpArg = [ url, '-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
+            const ytdlpArg = [ url, '-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--cookies', cookie, '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
 
             yt = spawn(ytDlpPath, ytdlpArg, {
                 stdio: "inherit",
