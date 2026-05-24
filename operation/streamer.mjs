@@ -32,7 +32,7 @@ const knowStreamer = (req, res) => {
     }
     let header = headers
     if (!header) {
-      header = formats[0].http_headers
+      header = formats[0]?.http_headers
     }
     
     const id = crypto.randomUUID()
