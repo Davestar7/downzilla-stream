@@ -167,6 +167,7 @@ const stream = async (req, res) => {
         });
 
     } catch (e) {
+        console.log(e.message)
         tk.delete(sid)
         res.status(500).json({
             message: `Error streaming: ${e.message}`
