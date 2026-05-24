@@ -83,12 +83,6 @@ const stream = async (req, res) => {
 
         if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
             const selected = selectvideoformat(formats)
-            if (selected === null) {
-                return res.status(400).json({
-                    success: false,
-                    message: "streamable format not found"
-                })
-            }
 
             formatc = chooseFormat(Number(selected.height))
         }
