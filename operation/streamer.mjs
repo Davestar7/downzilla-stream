@@ -22,7 +22,7 @@ const tempPath = path.join(__dirname, "temp")
 const tk = new Map()
 
 const knowStreamer = (req, res) => {
-    const { url, title, formats, height = null, headers } = req.body
+    const { url, title, formats = null, height = null, headers = null } = req.body
     
     if (!url || !title) {
         return res.status(400).json({
