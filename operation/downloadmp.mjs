@@ -36,9 +36,7 @@ const startAudioDownload = async (req, res) => {
             const choosen = selectaudioformat(formats)
             format = choosen.format_id
             extformat = choosen.ext
-        } else {
-            return res.status(400).json({ success: false, message: "required data incomplete" })
-        }
+        } 
     }
 
     let name = sanname(title).toString().toLowerCase().trim()
