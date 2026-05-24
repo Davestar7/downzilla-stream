@@ -5,7 +5,7 @@ dotenv.config();
 
 function loopFormatForFormatObject(ff, id) {
     if (ff.length == 0) {
-        return null
+        return ""
     }
 
     let format = null
@@ -23,7 +23,7 @@ function returnCorrectForArguments(ff, id, aid) {
     const a = loopFormatForFormatObject(ff, aid)
     console.log(`video: ${v}\n audio: ${a}`)
     if (v == null || a == null) {
-        return null
+        return ""
     }
     
     if (v.ext === "mp4" && a.ext !== "mp4" && !v.vcodec?.startsWith("avc") && !["aac", "mp3", "none"].includes(a.acodec)) {
@@ -31,7 +31,7 @@ function returnCorrectForArguments(ff, id, aid) {
     } else {
         return false
     }
-    return null
+    return ""
 }
 
 function sanname(name) {
@@ -46,7 +46,7 @@ function selectaudioformat(ff) {
         f => f.vcodec === "none" && f.acodec !== "none"
     );
     if (audioformat.length === 0) {
-        return null
+        return ""
     }
 
     audioformat.sort((a, b) => (b.abr || 0) - (a.abr || 0))
@@ -63,14 +63,14 @@ function selectaudioformat(ff) {
 
 function selectvideoformat(ff) {
     if (!Array.isArray(ff) || ff.length === 0) {
-        return null
+        return ""
     }
 
     const videoFormats = ff.filter(f => 
         f.vcodec && f.vcodec !== "none" && typeof f.height === "number"
         )
 
-    if (videoFormats.length === 0) return null
+    if (videoFormats.length === 0) return ""
 
     const preferred = videoFormats.filter(f => 
         f.ext === "mp4" && typeof f.vcodec === "string" && f.vcodec.startsWith("avc") && f.height >= 144 && f.height <= 1080
@@ -82,8 +82,7 @@ function selectvideoformat(ff) {
 
     const medianIndex = Math.floor(cands.length / 2)
     const s = cands[medianIndex];
-
-    console.log(`chosen: ${s}`)
+
     return {
         format_id: s.format_id,
         ext: s.ext,
@@ -95,10 +94,10 @@ function selectvideoformat(ff) {
 }
 
 function getHeightFromString(h) {
-    if (h === null) return null
+    if (h === null) return ""
 
     const m = String(h).match(/\d{3,4}/)
-    return m ? Number(m[0]) : null
+    return m ? Number(m[0]) : ""
 }
 
 function getMainDomain(irl) {
