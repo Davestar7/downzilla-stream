@@ -30,15 +30,11 @@ const startDownload = async (req, res) => {
 
         if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
             const selected = selectvideoformat(formats)
-            if (selected === null) {
-                return res.status(400).json({ success: false, message: "downloadable format not found" })
-            }
-            for_id = selected.format_id
+            
+            for_id = selected?.format_id
 
             const forFormat = selectaudioformat(formats)
-            if (forFormat === null) {
-                return res.status(400).json({ success: false, message: "no audio format found" })
-            }
+            
         } 
 
         let newtitle = sanname(title).toString().toLowerCase().trim()
