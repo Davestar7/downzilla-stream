@@ -51,7 +51,12 @@ const startDownload = async (req, res) => {
             }
         }
 
-        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...headerArgs, '-o', outputPath];
+        const defaultHeaders = [
+    '--add-header', 'Referer:https://www.google.com/',
+    '--add-header', `User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
+];
+
+        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...defaultHeaders, ...headerArgs, '-o', outputPath];
 
         const yt = spawn(ytDlpPath, ytdlpArg, {
             stdio: "pipe",
