@@ -166,6 +166,7 @@ const serveDownload = async (req, res) => {
         const stat = fs.statSync(process.outputPath);
         res.setHeader("Content-Length", stat.size);
         res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", `attachment; filename="${process.filename}"`);
 
         res.download(process.outputPath, process.filename, (err) => {
             if (err) console.log('serve error:', err);
