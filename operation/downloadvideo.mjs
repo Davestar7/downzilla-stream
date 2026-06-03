@@ -163,6 +163,10 @@ const serveDownload = async (req, res) => {
             return res.status(404).json({ success: false, message: "file not found" });
         }
 
+        const stat = fs.statSync(process.outputPath);
+        res.setHeader("Content-Length", stat.size);
+        res.setHeader("Content-Type", "video/mp4");
+
         res.download(process.outputPath, process.filename, (err) => {
             if (err) console.log('serve error:', err);
             if (fs.existsSync(process.outputPath)) fs.unlink(process.outputPath, () => {});
