@@ -59,14 +59,18 @@ const stream = async (req, res) => {
 
     try {
         const job = tk.get(sid)
+        if (!job) return res.status(404).json({ success: false, message: "session not found" })
 
-        let outputPath
+        // If file already exists and ready, stream it directly
+        if (job?.ready && job?.outputFile && fs.existsSync(job.outputFile) && fs.statSync(job.outputFile).size > 0) {
+            streamFile(req, res, job.outputFile)
+            return
+        }
 
+        // If yt-dlp already running, wait for it to finish
         if (job?.yt && job?.outputFile) {
-            if (fs.existsSync(job.outputFile) && fs.statSync(job.outputFile).size > 0) {
-                streamer(job.outputFile)
-                return
-            }
+            waitAndStream(req, res, job, sid)
+            return
         }
 
         const url = job.url
@@ -75,15 +79,11 @@ const stream = async (req, res) => {
         const height = job.height
         const headers = job.headers
 
-        let forFormat;
-        let for_id
         let formatc
-
         const newHeight = getHeightFromString(height)
 
         if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
             const selected = selectvideoformat(formats)
-
             formatc = chooseFormat(Number(selected.height))
         }
 
@@ -92,9 +92,8 @@ const stream = async (req, res) => {
         }
 
         let newtitle = sanname(title).toString().toLowerCase().trim()
-
         const id = crypto.randomBytes(6).toString('hex');
-        outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
+        const outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
 
         let headerArgs = []
         if (headers && typeof headers === "object") {
@@ -105,7 +104,8 @@ const stream = async (req, res) => {
 
         const cookie = ensureCookiesFile()
 
-        const ytdlpArg = [url, '--js-runtimes', 'node', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=web', '--cookies', cookie, ...headerArgs, '-o', '-'];
+        // Save to file instead of piping to stdout for range support
+        const ytdlpArg = [url, '--js-runtimes', 'node', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=web', '--cookies', cookie, ...headerArgs, '-o', outputPath];
 
         let yt
 
@@ -116,6 +116,8 @@ const stream = async (req, res) => {
             })
 
             job.yt = yt
+            job.outputFile = outputPath
+            job.ready = false
 
         } catch (e) {
             tk.delete(sid)
@@ -125,53 +127,83 @@ const stream = async (req, res) => {
             })
         }
 
-        // Set headers immediately and pipe yt-dlp output directly to response
-        req.socket.setTimeout(0);
-        req.socket.setKeepAlive(true, 3000);
-        res.setTimeout(0);
-
-        res.writeHead(200, {
-            'Content-Type': 'video/mp4',
-            'Transfer-Encoding': 'chunked',
-            'X-Accel-Buffering': 'no'
-        });
-
-        // Pipe yt-dlp stdout directly to response as it downloads
-        yt.stdout.pipe(res);
-
-        yt.stderr.on('data', (data) => {
-            console.log('yt-dlp:', data.toString());
-        });
-
         yt.on('close', (code) => {
-            if (code !== 0) {
-                console.error('yt-dlp exited with code:', code);
-            }
-            res.end();
-            setTimeout(() => {
-                if (fs.existsSync(outputPath)) {
-                    fs.unlink(outputPath, () => {});
-                }
+            if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                job.ready = true
+            } else {
+                job.ready = false
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
                 tk.delete(sid)
-            }, 600000);
+            }
+            setTimeout(() => {
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+                tk.delete(sid)
+            }, 600000)
         });
 
-        res.on('close', () => {
-            yt.kill('SIGKILL');
-            setTimeout(() => {
-                if (fs.existsSync(outputPath)) {
-                    fs.unlink(outputPath, () => {});
-                }
-                tk.delete(sid);
-            }, 600000);
-        });
+        // Wait for download to complete then stream
+        waitAndStream(req, res, job, sid)
 
     } catch (e) {
         console.log(e.message)
         tk.delete(sid)
-        res.status(500).json({
-            message: `Error streaming: ${e.message}`
+        if (!res.writableEnded) {
+            res.status(500).json({ message: `Error streaming: ${e.message}` })
+        }
+    }
+}
+
+function waitAndStream(req, res, job, sid) {
+    req.socket.setTimeout(0)
+    req.socket.setKeepAlive(true, 3000)
+    res.setTimeout(0)
+
+    const wait = setInterval(() => {
+        if (job.ready && fs.existsSync(job.outputFile) && fs.statSync(job.outputFile).size > 0) {
+            clearInterval(wait)
+            streamFile(req, res, job.outputFile)
+        }
+    }, 1000)
+
+    // If client disconnects while waiting
+    res.on('close', () => {
+        clearInterval(wait)
+        if (job.yt) job.yt.kill('SIGKILL')
+    })
+}
+
+function streamFile(req, res, filePath) {
+    try {
+        const stat = fs.statSync(filePath)
+        const fileSize = stat.size
+        const range = req.headers.range
+
+        if (!range) {
+            res.writeHead(200, {
+                "Content-Length": fileSize,
+                "Content-Type": "video/mp4",
+                "Accept-Ranges": "bytes"
+            })
+            fs.createReadStream(filePath).pipe(res)
+            return
+        }
+
+        const parts = range.replace(/bytes=/, "").split("-")
+        const start = parseInt(parts[0], 10)
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
+        const chunkSize = end - start + 1
+
+        res.writeHead(206, {
+            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+            "Accept-Ranges": "bytes",
+            "Content-Length": chunkSize,
+            "Content-Type": "video/mp4"
         })
+
+        fs.createReadStream(filePath, { start, end }).pipe(res)
+    } catch (e) {
+        console.log('streamFile error:', e.message)
+        if (!res.writableEnded) res.status(500).end()
     }
 }
 
