@@ -142,37 +142,47 @@ const confirmDownload = async (req, res) => {
 
 const serveDownload = async (req, res) => {
     const { jobId } = req.query;
-    
+
     try {
         if (!jobId) {
             return res.status(400).json({ success: false, message: "jobId is required" });
         }
 
-        const process = processes.get(jobId);
+        const job = processes.get(jobId);
 
-        if (!process) {
+        if (!job) {
             return res.status(404).json({ success: false, message: "job not found" });
         }
 
-        if (process.status !== "done") {
+        if (job.status !== "done") {
             return res.status(400).json({ success: false, message: "download not ready yet" });
         }
 
-        if (!fs.existsSync(process.outputPath)) {
+        if (!fs.existsSync(job.outputPath)) {
             processes.delete(jobId);
             return res.status(404).json({ success: false, message: "file not found" });
         }
 
-        const stat = fs.statSync(process.outputPath);
+        const stat = fs.statSync(job.outputPath);
+
         res.setHeader("Content-Length", stat.size);
         res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Disposition", `attachment; filename="${process.filename}"`);
+        res.setHeader("Content-Disposition", `attachment; filename="${job.filename}"`);
+        res.setHeader("Access-Control-Expose-Headers", "Content-Length");
 
-        res.download(process.outputPath, process.filename, (err) => {
-            if (err) console.log('serve error:', err);
-            if (fs.existsSync(process.outputPath)) fs.unlink(process.outputPath, () => {});
+        const fileStream = fs.createReadStream(job.outputPath);
+
+        fileStream.on("error", (err) => {
+            console.log("stream error:", err);
+            if (!res.writableEnded) res.end();
+        });
+
+        fileStream.on("close", () => {
+            if (fs.existsSync(job.outputPath)) fs.unlink(job.outputPath, () => {});
             processes.delete(jobId);
         });
+
+        fileStream.pipe(res);
 
     } catch (e) {
         console.log(e);
