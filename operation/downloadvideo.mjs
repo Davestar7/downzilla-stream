@@ -144,19 +144,12 @@ const serveDownload = async (req, res) => {
     const { jobId } = req.query;
 
     try {
-        if (!jobId) {
-            return res.status(400).json({ success: false, message: "jobId is required" });
-        }
+        if (!jobId) return res.status(400).json({ success: false, message: "jobId is required" });
 
         const job = processes.get(jobId);
+        if (!job) return res.status(404).json({ success: false, message: "job not found" });
 
-        if (!job) {
-            return res.status(404).json({ success: false, message: "job not found" });
-        }
-
-        if (job.status !== "done") {
-            return res.status(400).json({ success: false, message: "download not ready yet" });
-        }
+        if (job.status !== "done") return res.status(400).json({ success: false, message: "download not ready yet" });
 
         if (!fs.existsSync(job.outputPath)) {
             processes.delete(jobId);
@@ -164,24 +157,42 @@ const serveDownload = async (req, res) => {
         }
 
         const stat = fs.statSync(job.outputPath);
+        const fileSize = stat.size;
+        const range = req.headers.range;
 
-        res.setHeader("Content-Length", stat.size);
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Disposition", `attachment; filename="${job.filename}"`);
-        res.setHeader("Access-Control-Expose-Headers", "Content-Length");
+        if (!range) {
+            res.setHeader("Content-Length", fileSize);
+            res.setHeader("Content-Type", "video/mp4");
+            res.setHeader("Content-Disposition", `attachment; filename="${job.filename}"`);
+            res.setHeader("Accept-Ranges", "bytes");
+            res.setHeader("Access-Control-Expose-Headers", "Content-Length");
 
-        const fileStream = fs.createReadStream(job.outputPath);
+            const fileStream = fs.createReadStream(job.outputPath);
+            fileStream.on("error", (err) => { if (!res.writableEnded) res.end(); });
+            fileStream.on("close", () => {
+                if (fs.existsSync(job.outputPath)) fs.unlink(job.outputPath, () => {});
+                processes.delete(jobId);
+            });
+            fileStream.pipe(res);
+            return;
+        }
 
-        fileStream.on("error", (err) => {
-            console.log("stream error:", err);
-            if (!res.writableEnded) res.end();
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+
+        res.writeHead(206, {
+            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+            "Accept-Ranges": "bytes",
+            "Content-Length": chunkSize,
+            "Content-Type": "video/mp4",
+            "Content-Disposition": `attachment; filename="${job.filename}"`,
+            "Access-Control-Expose-Headers": "Content-Length"
         });
 
-        fileStream.on("close", () => {
-            if (fs.existsSync(job.outputPath)) fs.unlink(job.outputPath, () => {});
-            processes.delete(jobId);
-        });
-
+        const fileStream = fs.createReadStream(job.outputPath, { start, end });
+        fileStream.on("error", (err) => { if (!res.writableEnded) res.end(); });
         fileStream.pipe(res);
 
     } catch (e) {
