@@ -1,2 +1,8 @@
 [phases.setup]
-nixPkgs = ["python3", "ffmpeg"]
+nixPkgs = ["python3", "ffmpeg", "curl"]
+
+[phases.install]
+cmds = ["chmod +x build.sh", "./build.sh"]
+
+[start]
+cmd = "npm start"
