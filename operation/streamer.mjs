@@ -138,7 +138,7 @@ const stream = async (req, res) => {
             setTimeout(() => {
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
                 tk.delete(sid)
-            }, 600000)
+            }, 100000)
         });
 
         // Wait for download to complete then stream
