@@ -22,7 +22,7 @@ const tempPath = path.join(__dirname, "temp")
 const tk = new Map()
 
 const knowStreamer = (req, res) => {
-    const { url, title, formats = null, height = null, headers = null } = req.body
+    const { url, title, formats = null, height = null, headers = null, vid } = req.body
     
     if (!url || !title) {
         return res.status(400).json({
@@ -45,7 +45,8 @@ const knowStreamer = (req, res) => {
         height: height,
         headers: header,
         yt: null,
-        outputFile: null
+        outputFile: null,
+        vid: vid
     })
 
     res.status(201).json({
