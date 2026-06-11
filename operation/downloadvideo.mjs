@@ -22,7 +22,7 @@ const tempPath = path.join(__dirname, "temp");
 const processes = new Map();
 
 const startDownload = async (req, res) => {
-    const {url, format_id, title, start, end, formats, height = null, headers} = req.body
+    const {url, format_id, title, start, end, formats, height = null, headers, vid} = req.body
     
     try {
         let for_id = format_id
@@ -267,7 +267,8 @@ const downloadVideoFunction = async (req, res) => {
                 headerArgs.push('--add-header', `${key}: ${value}`);
                }
              }
-             
+             
+
         
         // const nodePath = process.platform === 'win32' ? process.execPath : '/usr/user/bin'
         // console.log(`node path: ${nodePath}`)
