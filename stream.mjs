@@ -3,7 +3,7 @@ import cors from 'cors'
 import route from "./routes/routes.mjs"
 import path from "path"
 import { fileURLToPath } from "url";
-const { execSync } = require('child_process');
+import { execSync } from 'child_process';
 
 const app = express()
 
