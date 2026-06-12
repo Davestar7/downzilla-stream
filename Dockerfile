@@ -16,7 +16,7 @@ COPY . .
 
 # Download yt-dlp binary
 RUN mkdir -p /app/operation && \
-    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp && \
+    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /app/operation/yt-dlp && \
     chmod a+rx /app/operation/yt-dlp
 
 # Verify (optional, shows in build logs)
