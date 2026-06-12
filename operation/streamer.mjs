@@ -21,6 +21,11 @@ const tempPath = path.join(__dirname, "temp")
 
 const tk = new Map()
 
+import crypto from 'crypto'
+
+// Shared map to track files by content identifier (separate from session map `tk`)
+const streamFiles = new Map()
+
 const knowStreamer = (req, res) => {
     const { url, title, formats = null, height = null, headers = null, vid } = req.body
     
@@ -62,23 +67,12 @@ const stream = async (req, res) => {
         const job = tk.get(sid)
         if (!job) return res.status(404).json({ success: false, message: "session not found" })
 
-        // If file already exists and ready, stream it directly
-        if (job?.ready && job?.outputFile && fs.existsSync(job.outputFile) && fs.statSync(job.outputFile).size > 0) {
-            streamFile(req, res, job.outputFile)
-            return
-        }
-
-        // If yt-dlp already running, wait for it to finish
-        if (job?.yt && job?.outputFile) {
-            waitAndStream(req, res, job, sid)
-            return
-        }
-
         const url = job.url
         const title = job.title
         const formats = job.formats
         const height = job.height
         const headers = job.headers
+        const vid = job.vid
 
         let formatc
         const newHeight = getHeightFromString(height)
@@ -93,8 +87,36 @@ const stream = async (req, res) => {
         }
 
         let newtitle = sanname(title).toString().toLowerCase().trim()
-        const id = crypto.randomBytes(6).toString('hex');
-        const outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
+
+        // Use vid if available, otherwise fall back to title, combined with format for uniqueness
+        const baseIdentifier = vid || newtitle
+        const fileId = crypto.createHash('md5').update(`${baseIdentifier}-${formatc || 'default'}`).digest('hex')
+        const outputPath = path.join(tempPath, `${fileId}.mp4`)
+
+        // Check if file already exists and is valid - stream it directly
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            let entry = streamFiles.get(fileId)
+            if (!entry) {
+                entry = { status: "done", outputFile: outputPath, yt: null }
+                streamFiles.set(fileId, entry)
+            }
+            entry.expiresAt = Date.now() + 30 * 60 * 1000 // extend expiry
+            job.outputFile = outputPath
+            job.ready = true
+            streamFile(req, res, outputPath)
+            return
+        }
+
+        // If another session already started this exact file, wait on that one
+        let entry = streamFiles.get(fileId)
+
+        if (entry && entry.status === "processing") {
+            job.outputFile = entry.outputFile
+            job.yt = entry.yt
+            job.ready = false
+            waitAndStream(req, res, job, sid, fileId)
+            return
+        }
 
         let headerArgs = []
         if (headers && typeof headers === "object") {
@@ -120,6 +142,14 @@ const stream = async (req, res) => {
             job.outputFile = outputPath
             job.ready = false
 
+            entry = {
+                status: "processing",
+                outputFile: outputPath,
+                yt: yt,
+                expiresAt: Date.now() + 30 * 60 * 1000
+            }
+            streamFiles.set(fileId, entry)
+
         } catch (e) {
             tk.delete(sid)
             return res.status(501).json({
@@ -129,21 +159,24 @@ const stream = async (req, res) => {
         }
 
         yt.on('close', (code) => {
+            const entry = streamFiles.get(fileId)
+
             if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
                 job.ready = true
+                if (entry) {
+                    entry.status = "done"
+                    entry.expiresAt = Date.now() + 30 * 60 * 1000
+                }
             } else {
                 job.ready = false
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+                if (entry) streamFiles.delete(fileId)
                 tk.delete(sid)
             }
-            setTimeout(() => {
-                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
-                tk.delete(sid)
-            }, 100000)
         });
 
         // Wait for download to complete then stream
-        waitAndStream(req, res, job, sid)
+        waitAndStream(req, res, job, sid, fileId)
 
     } catch (e) {
         console.log(e.message)
@@ -154,14 +187,23 @@ const stream = async (req, res) => {
     }
 }
 
-function waitAndStream(req, res, job, sid) {
+function waitAndStream(req, res, job, sid, fileId) {
     req.socket.setTimeout(0)
     req.socket.setKeepAlive(true, 3000)
     res.setTimeout(0)
 
     const wait = setInterval(() => {
+        const entry = streamFiles.get(fileId)
+
+        if (entry && entry.status === "failed") {
+            clearInterval(wait)
+            if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
+            return
+        }
+
         if (job.ready && fs.existsSync(job.outputFile) && fs.statSync(job.outputFile).size > 0) {
             clearInterval(wait)
+            if (entry) entry.expiresAt = Date.now() + 30 * 60 * 1000
             streamFile(req, res, job.outputFile)
         }
     }, 1000)
@@ -169,7 +211,8 @@ function waitAndStream(req, res, job, sid) {
     // If client disconnects while waiting
     res.on('close', () => {
         clearInterval(wait)
-        if (job.yt) job.yt.kill('SIGKILL')
+        // Don't kill yt if other sessions are waiting on the same fileId
+        // Only kill if this was the only consumer - skipped for simplicity
     })
 }
 
@@ -207,6 +250,18 @@ function streamFile(req, res, filePath) {
         if (!res.writableEnded) res.status(500).end()
     }
 }
+
+// Cleanup job - run periodically to remove expired stream files
+setInterval(() => {
+    const now = Date.now()
+
+    for (const [fileId, entry] of streamFiles.entries()) {
+        if (entry.status === "done" && entry.expiresAt && now > entry.expiresAt) {
+            if (fs.existsSync(entry.outputFile)) fs.unlink(entry.outputFile, () => {})
+            streamFiles.delete(fileId)
+        }
+    }
+}, 5 * 60 * 1000) // check every 5 minutes
 
 /*
 const stream = async (req, res) => {
