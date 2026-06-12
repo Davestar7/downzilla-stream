@@ -1,6 +1,9 @@
 import express from "express"
 import cors from 'cors'
 import route from "./routes/routes.mjs"
+import path from "path"
+import { fileURLToPath } from "url";
+const { execSync } = require('child_process');
 
 const app = express()
 
@@ -15,6 +18,22 @@ app.use(cors({
     origin: origin,
     credentials: true
 }))
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const isWindows = process.platform === "win32";
+
+const ytDlpPath = isWindows
+  ? path.join(__dirname, "bin", "yt-dlp.exe")
+  : "/app/operation/yt-dlp";
+
+try {
+  console.log('Updating yt-dlp...');
+  const out = execSync(`${ytDlpPath} -U`, { encoding: 'utf8' });
+  console.log(out);
+} catch (err) {
+  console.error('yt-dlp self-update failed:', err.message);
+}
 
 app.use(express.json())
 
