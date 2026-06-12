@@ -23,6 +23,10 @@ app.get("/", (req, res) => {
   res.send(`Downzilla Streaming service - <a href="https://downzilla.netlify.app">Home</a>`)
 })
 
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 const port = 7700
 
 app.listen(port, () => {
