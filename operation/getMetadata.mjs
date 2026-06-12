@@ -84,7 +84,9 @@ const metadataExtractor = async (req, res) => {
                 const chuck = await chunk.toString()
                 data += chuck
             });
+          
             await proc.stderr.on("data", async (chunk) => {
+                console.error('YTDLP STDERR:', chunk.toString())
                 const chuck = await chunk.toString()
                 error += chuck
             });
