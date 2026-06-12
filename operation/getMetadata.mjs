@@ -45,7 +45,7 @@ const metadataExtractor = async (req, res) => {
                 
                 proc = spawn(ytDlpPath, [
                 '--cookies', cookie,
-                 '-j',  '-f', 'bv*+ba/b',  '--no-warnings',  '--skip-download', '--no-check-certificate',  '--no-playlist',  '--force-ipv4',  '--retries', 'infinite',  '--fragment-retries', 'infinite',  '--ignore-errors',  '--no-cache-dir',url], {
+                 '-j',  '-f', 'bv*+ba/b',  '--no-warnings',  '--skip-download', '--no-check-certificate',  '--no-playlist', '--retries', 'infinite',  '--fragment-retries', 'infinite',  '--ignore-errors',  '--no-cache-dir',url], {
                     stdio: ["ignore", "pipe", "pipe"]
                 })
             } else if (type === "playlist") {
