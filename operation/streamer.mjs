@@ -21,8 +21,6 @@ const tempPath = path.join(__dirname, "temp")
 
 const tk = new Map()
 
-import crypto from 'crypto'
-
 // Shared map to track files by content identifier (separate from session map `tk`)
 const streamFiles = new Map()
 
