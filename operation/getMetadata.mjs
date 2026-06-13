@@ -44,10 +44,10 @@ const metadataExtractor = async (req, res) => {
             if (type === "video") {
                 
                 proc = spawn(ytDlpPath, [
-                    '--cookies', cookie, '-j', '-f', 'bv*+ba/b', '--extractor-args', 'youtube:player_client=android', '--verbose', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', url]
-                ,{
-                  stdio: ["ignore", "pipe", "pipe"]
-                })
+                    '--cookies', cookie, '-j', '--skip-download','--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir','--extractor-args', 'youtube:player_client=tv,web', url
+], {
+    stdio: ["ignore", "pipe", "pipe"]
+})
             } else if (type === "playlist") {
                 proc = spawn(ytDlpPath, argument, {
                     stdio: ["ignore", "pipe", "pipe"]
