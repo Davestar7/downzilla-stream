@@ -21,23 +21,21 @@ const tempPath = path.join(__dirname, "temp")
 
 const tk = new Map()
 
-// Shared map to track files by content identifier (separate from session map `tk`)
-const streamFiles = new Map()
-
 const knowStreamer = (req, res) => {
     const { url, title, formats = null, height = null, headers = null, vid } = req.body
-    
+
     if (!url || !title) {
         return res.status(400).json({
             success: false,
             message: "failed incomplete data"
         })
     }
+
     let header = headers
     if (!header) {
-      header = formats[0]?.http_headers
+        header = formats[0]?.http_headers
     }
-    
+
     const id = crypto.randomUUID()
 
     tk.set(id, {
@@ -84,49 +82,57 @@ const stream = async (req, res) => {
             formatc = chooseFormat(Number(height))
         }
 
-        let newtitle = sanname(title).toString().toLowerCase().trim()
+        const newtitle = sanname(title).toString().toLowerCase().trim()
 
-        // Use vid if available, otherwise fall back to title, combined with format for uniqueness
-        const baseIdentifier = vid || newtitle
-        const fileId = crypto.createHash('md5').update(`${baseIdentifier}-${formatc || 'default'}`).digest('hex')
+        // Generate fileId - use vid if not null, otherwise use title
+        let fileId
+        if (vid) {
+            fileId = crypto.createHash('md5').update(`${vid}-${formatc || 'default'}`).digest('hex')
+        } else {
+            fileId = crypto.createHash('md5').update(`${newtitle}-${formatc || 'default'}`).digest('hex')
+        }
+
         const outputPath = path.join(tempPath, `${fileId}.mp4`)
 
-        // Check if file already exists and is valid - stream it directly
+        req.socket.setTimeout(0)
+        req.socket.setKeepAlive(true, 3000)
+        res.setTimeout(0)
+
+        // Reuse existing file (created by download OR stream)
         if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-            let entry = streamFiles.get(fileId)
+            let entry = processes.get(fileId)
             if (!entry) {
-                entry = { status: "done", outputFile: outputPath, yt: null }
-                streamFiles.set(fileId, entry)
+                entry = { status: "done", outputPath, yt: null }
+                processes.set(fileId, entry)
             }
-            entry.expiresAt = Date.now() + 30 * 60 * 1000 // extend expiry
+            entry.expiresAt = Date.now() + 30 * 60 * 1000
             job.outputFile = outputPath
             job.ready = true
             streamFile(req, res, outputPath)
             return
         }
 
-        // If another session already started this exact file, wait on that one
-        let entry = streamFiles.get(fileId)
+        // Reuse in-progress job (started by download OR stream)
+        let entry = processes.get(fileId)
 
         if (entry && entry.status === "processing") {
-            job.outputFile = entry.outputFile
+            job.outputFile = outputPath
             job.yt = entry.yt
             job.ready = false
-            waitAndStream(req, res, job, sid, fileId)
+            waitAndStream(req, res, fileId, outputPath)
             return
         }
 
         let headerArgs = []
         if (headers && typeof headers === "object") {
             for (const [key, value] of Object.entries(headers)) {
-                headerArgs.push('--add-header', `${key}: ${value}`);
+                headerArgs.push('--add-header', `${key}: ${value}`)
             }
         }
 
         const cookie = ensureCookiesFile()
 
-        // Save to file instead of piping to stdout for range support
-        const ytdlpArg = [url, '--js-runtimes', 'node', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=web', '--cookies', cookie, ...headerArgs, '-o', outputPath];
+        const ytdlpArg = [url, '--js-runtimes', 'node', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=web', '--cookies', cookie, ...headerArgs, '-o', outputPath]
 
         let yt
 
@@ -140,13 +146,12 @@ const stream = async (req, res) => {
             job.outputFile = outputPath
             job.ready = false
 
-            entry = {
+            processes.set(fileId, {
                 status: "processing",
-                outputFile: outputPath,
-                yt: yt,
+                outputPath,
+                yt,
                 expiresAt: Date.now() + 30 * 60 * 1000
-            }
-            streamFiles.set(fileId, entry)
+            })
 
         } catch (e) {
             tk.delete(sid)
@@ -157,7 +162,7 @@ const stream = async (req, res) => {
         }
 
         yt.on('close', (code) => {
-            const entry = streamFiles.get(fileId)
+            const entry = processes.get(fileId)
 
             if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
                 job.ready = true
@@ -168,13 +173,26 @@ const stream = async (req, res) => {
             } else {
                 job.ready = false
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
-                if (entry) streamFiles.delete(fileId)
+                if (entry) {
+                    entry.status = "failed"
+                    processes.delete(fileId)
+                }
                 tk.delete(sid)
             }
-        });
+        })
 
-        // Wait for download to complete then stream
-        waitAndStream(req, res, job, sid, fileId)
+        yt.on('error', () => {
+            const entry = processes.get(fileId)
+            job.ready = false
+            if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+            if (entry) {
+                entry.status = "failed"
+                processes.delete(fileId)
+            }
+            tk.delete(sid)
+        })
+
+        waitAndStream(req, res, fileId, outputPath)
 
     } catch (e) {
         console.log(e.message)
@@ -185,13 +203,9 @@ const stream = async (req, res) => {
     }
 }
 
-function waitAndStream(req, res, job, sid, fileId) {
-    req.socket.setTimeout(0)
-    req.socket.setKeepAlive(true, 3000)
-    res.setTimeout(0)
-
+function waitAndStream(req, res, fileId, outputPath) {
     const wait = setInterval(() => {
-        const entry = streamFiles.get(fileId)
+        const entry = processes.get(fileId)
 
         if (entry && entry.status === "failed") {
             clearInterval(wait)
@@ -199,18 +213,15 @@ function waitAndStream(req, res, job, sid, fileId) {
             return
         }
 
-        if (job.ready && fs.existsSync(job.outputFile) && fs.statSync(job.outputFile).size > 0) {
+        if (entry && entry.status === "done" && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
             clearInterval(wait)
-            if (entry) entry.expiresAt = Date.now() + 30 * 60 * 1000
-            streamFile(req, res, job.outputFile)
+            entry.expiresAt = Date.now() + 30 * 60 * 1000
+            streamFile(req, res, outputPath)
         }
     }, 1000)
 
-    // If client disconnects while waiting
     res.on('close', () => {
         clearInterval(wait)
-        // Don't kill yt if other sessions are waiting on the same fileId
-        // Only kill if this was the only consumer - skipped for simplicity
     })
 }
 
@@ -248,18 +259,6 @@ function streamFile(req, res, filePath) {
         if (!res.writableEnded) res.status(500).end()
     }
 }
-
-// Cleanup job - run periodically to remove expired stream files
-setInterval(() => {
-    const now = Date.now()
-
-    for (const [fileId, entry] of streamFiles.entries()) {
-        if (entry.status === "done" && entry.expiresAt && now > entry.expiresAt) {
-            if (fs.existsSync(entry.outputFile)) fs.unlink(entry.outputFile, () => {})
-            streamFiles.delete(fileId)
-        }
-    }
-}, 5 * 60 * 1000) // check every 5 minutes
 
 /*
 const stream = async (req, res) => {
