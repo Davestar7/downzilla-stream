@@ -42,7 +42,14 @@ const metadataExtractor = async (req, res) => {
             argument.push(url)
             
             if (type === "video") {
-              proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--extractor-args', 'youtube:player_client=android_vr,tv', url], { stdio: ["ignore", "pipe", "pipe"] })
+              const isYoutube = url.includes('youtube.com') || url.includes('youtu.be')
+
+const args = isYoutube 
+    ? ['-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--extractor-args', 'youtube:player_client=android_vr', url]
+    : ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', url]
+
+proc = spawn(ytDlpPath, args, { stdio: ["ignore", "pipe", "pipe"] })
+              //proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--extractor-args', 'youtube:player_client=android_vr,tv', url], { stdio: ["ignore", "pipe", "pipe"] })
                 //proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--js-runtimes', 'node', '--remote-components', 'ejs:github', '--extractor-args', 'youtube:player_client=tv,web', url], { stdio: ["ignore", "pipe", "pipe"] })
             } else if (type === "playlist") {
                 proc = spawn(ytDlpPath, argument, {
