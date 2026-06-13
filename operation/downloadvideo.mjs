@@ -217,19 +217,9 @@ const serveDownload = async (req, res) => {
         console.log(e)
         res.status(500).json({ success: false, message: e.message })
     }
-    }
+  }
 
-// Cleanup job - run periodically to remove expired files
-setInterval(() => {
-    const now = Date.now();
 
-    for (const [id, job] of processes.entries()) {
-        if (job.status === "done" && job.expiresAt && now > job.expiresAt) {
-            if (fs.existsSync(job.outputPath)) fs.unlink(job.outputPath, () => {});
-            processes.delete(id);
-        }
-    }
-}, 5 * 60 * 1000); // check every 5 minutes
 
 export { startDownload, confirmDownload, serveDownload };
 
