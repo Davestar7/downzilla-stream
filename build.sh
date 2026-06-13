@@ -19,10 +19,16 @@ fi
 # Install Python, pip and ffmpeg
 apt-get update && apt-get install -y python3 python3-pip ffmpeg
 
-# Install yt-dlp with EJS scripts via pip (includes challenge solver scripts)
+# Install yt-dlp with EJS scripts via pip
 pip3 install "yt-dlp[default]" --break-system-packages
 
-# Also download latest yt-dlp binary as fallback
+# Install Deno as reliable fallback JS runtime
+curl -fsSL https://deno.land/install.sh | sh
+export DENO_INSTALL="/root/.deno"
+export PATH="$DENO_INSTALL/bin:$PATH"
+ln -sf $DENO_INSTALL/bin/deno /usr/local/bin/deno
+
+# Download latest yt-dlp binary as fallback
 mkdir -p /app/operation
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp
 chmod a+rx /app/operation/yt-dlp
@@ -33,6 +39,7 @@ npm install
 # Verify installations
 echo "node path: $(which node)"
 echo "node version: $(node --version)"
+echo "deno version: $(deno --version 2>/dev/null || echo 'not found')"
 echo "python version: $(python3 --version)"
 echo "ffmpeg version: $(ffmpeg -version | head -n 1)"
 echo "yt-dlp version: $(/app/operation/yt-dlp --version)"
