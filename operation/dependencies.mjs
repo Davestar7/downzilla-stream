@@ -82,7 +82,8 @@ function selectvideoformat(ff) {
 
     const medianIndex = Math.floor(cands.length / 2)
     const s = cands[medianIndex];
-
+
+
     return {
         format_id: s.format_id,
         ext: s.ext,
@@ -141,4 +142,6 @@ function ensureCookiesFile() {
   return COOKIES_PATH;
 }
 
-export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments, chooseFormat, ensureCookiesFile}
+const processes = new Map()
+
+export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments, chooseFormat, ensureCookiesFile, processes}
