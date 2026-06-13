@@ -42,7 +42,8 @@ const metadataExtractor = async (req, res) => {
             argument.push(url)
             
             if (type === "video") {
-              const argss = ['--cookies', cookie, '--js-runtimes', 'node','-j','--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist','--force-ipv4',  '--retries', 'infinite','--fragment-retries', 'infinite','--ignore-errors','--no-cache-dir', url];
+              //const argss = ['--cookies', cookie, '--js-runtimes', 'node','-j','--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist','--force-ipv4',  '--retries', 'infinite','--fragment-retries', 'infinite','--ignore-errors','--no-cache-dir', url];
+              const argss = ['--cookies', cookie, '--js-runtimes', 'node', '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--no-cache-dir', '--extractor-args', 'youtube:player_client=web', '-J', url];
               proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
             
              // proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '-S', '+size,+br', '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', url], { stdio: ["ignore", "pipe", "pipe"] })
