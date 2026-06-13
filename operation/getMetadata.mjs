@@ -10,7 +10,7 @@ const isWindows = process.platform === "win32";
 
 const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
-  : "/app/operation/yt-dlp";
+  : "/usr/local/bin/yt-dlp";
 
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
