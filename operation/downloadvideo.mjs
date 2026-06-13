@@ -19,47 +19,51 @@ const ffmpegPath = isWindows
 
 const tempPath = path.join(__dirname, "temp");
 
-const processes = new Map();
-
 const startDownload = async (req, res) => {
-    const {url, format_id, title, start, end, formats, height = null, headers, vid} = req.body
+    const {url, format_id, title, formats, height = null, headers, vid} = req.body
 
     try {
-        let for_id = format_id
-        const newHeight = getHeightFromString(height)
         let formatc
+        const newHeight = getHeightFromString(height)
 
         if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
             const selected = selectvideoformat(formats)
-            for_id = selected?.format_id
             formatc = chooseFormat(Number(selected?.height))
         } else {
             formatc = chooseFormat(Number(height))
         }
 
-        let newtitle = sanname(title).toString().toLowerCase().trim()
+        const newtitle = sanname(title).toString().toLowerCase().trim()
         const filename = (newtitle || "video") + "_downzilla.mp4"
 
-        // Use vid if available, otherwise fall back to title, combined with format for uniqueness
-        const baseIdentifier = vid || newtitle
-        const id = crypto.createHash('md5').update(`${baseIdentifier}-${formatc || 'default'}`).digest('hex')
-        const outputPath = path.join(tempPath, `${id}.mp4`);
-
-        // Check if file already exists and is valid - reuse it
-        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-            processes.set(id, {
-                status: "done",
-                outputPath,
-                filename,
-                yt: null,
-                expiresAt: Date.now() + 30 * 60 * 1000 // extend expiry by 30 minutes
-            });
-            return res.json({ success: true, jobId: id });
+        // Generate fileId - use vid if not null, otherwise use title
+        let fileId
+        if (vid) {
+            fileId = crypto.createHash('md5').update(`${vid}-${formatc || 'default'}`).digest('hex')
+        } else {
+            fileId = crypto.createHash('md5').update(`${newtitle}-${formatc || 'default'}`).digest('hex')
         }
 
-        // Check if already processing - another request for same video/format
-        if (processes.has(id) && processes.get(id).status === "processing") {
-            return res.json({ success: true, jobId: id });
+        const outputPath = path.join(tempPath, `${fileId}.mp4`)
+
+        // Reuse existing file (created by download OR stream)
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            let job = processes.get(fileId)
+            if (!job) {
+                job = { status: "done", outputPath, yt: null }
+                processes.set(fileId, job)
+            }
+            job.status = "done"
+            job.filename = filename
+            job.expiresAt = Date.now() + 30 * 60 * 1000
+            return res.json({ success: true, jobId: fileId })
+        }
+
+        // Reuse in-progress job (started by download OR stream)
+        let existingJob = processes.get(fileId)
+        if (existingJob && existingJob.status === "processing") {
+            existingJob.filename = filename
+            return res.json({ success: true, jobId: fileId })
         }
 
         const cookie = ensureCookiesFile()
@@ -67,140 +71,134 @@ const startDownload = async (req, res) => {
         let headerArgs = []
         if (headers && typeof headers === "object") {
             for (const [key, value] of Object.entries(headers)) {
-                headerArgs.push('--add-header', `${key}: ${value}`);
+                headerArgs.push('--add-header', `${key}: ${value}`)
             }
         }
 
         const defaultHeaders = [
             '--add-header', 'Referer:https://www.google.com/',
             '--add-header', `User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
-        ];
+        ]
 
-        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4][filesize<200M]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[filesize<200M]/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...defaultHeaders, ...headerArgs, '-o', outputPath];
+        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4][filesize<200M]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[filesize<200M]/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...defaultHeaders, ...headerArgs, '-o', outputPath]
 
         const yt = spawn(ytDlpPath, ytdlpArg, {
             stdio: "pipe",
             cwd: __dirname
-        });
+        })
 
-        // Store in processes map
-        processes.set(id, {
-            status: "processing", // processing | done | failed
+        processes.set(fileId, {
+            status: "processing",
             outputPath,
             filename,
             yt,
             expiresAt: Date.now() + 30 * 60 * 1000
-        });
+        })
 
         // Return job ID immediately
-        res.json({ success: true, jobId: id });
+        res.json({ success: true, jobId: fileId })
 
         yt.on("close", (code) => {
-            const process = processes.get(id);
-            if (!process) return;
+            const job = processes.get(fileId)
+            if (!job) return
 
             if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                console.log("done processing")
-                process.status = "done";
-                process.expiresAt = Date.now() + 30 * 60 * 1000;
+                job.status = "done"
+                job.expiresAt = Date.now() + 30 * 60 * 1000
             } else {
-                process.status = "failed";
-                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+                job.status = "failed"
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
             }
-        });
+        })
 
         yt.on("error", () => {
-            const process = processes.get(id);
-            if (process) {
-                process.status = "failed";
-                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
+            const job = processes.get(fileId)
+            if (job) {
+                job.status = "failed"
+                if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
             }
-        });
+        })
 
     } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
+        res.status(500).json({ success: false, message: e.message })
     }
 }
 
 
 const confirmDownload = async (req, res) => {
-    const { jobId } = req.query;
+    const { jobId } = req.query
 
     try {
         if (!jobId) {
-            return res.status(400).json({ success: false, message: "jobId is required" });
+            return res.status(400).json({ success: false, message: "jobId is required" })
         }
 
-        const process = processes.get(jobId);
+        const job = processes.get(jobId)
 
-        if (!process) {
-            return res.status(404).json({ success: false, message: "job not found" });
+        if (!job) {
+            return res.status(404).json({ success: false, message: "job not found" })
         }
 
-        // Return current status - frontend keeps polling if still processing
-        if (process.status === "processing") {
-            return res.json({ success: true, done: false, status: "processing" });
+        if (job.status === "processing") {
+            return res.json({ success: true, done: false, status: "processing" })
         }
 
-        if (process.status === "failed") {
-            processes.delete(jobId);
-            return res.json({ success: false, done: false, status: "failed", message: "download failed" });
+        if (job.status === "failed") {
+            processes.delete(jobId)
+            return res.json({ success: false, done: false, status: "failed", message: "download failed" })
         }
 
-        if (process.status === "done") {
-            // Extend expiry on confirm too
-            process.expiresAt = Date.now() + 30 * 60 * 1000;
-            return res.json({ success: true, done: true, status: "done", jobId });
+        if (job.status === "done") {
+            job.expiresAt = Date.now() + 30 * 60 * 1000
+            return res.json({ success: true, done: true, status: "done", jobId })
         }
 
     } catch (e) {
-        console.log(e);
-        res.status(500).json({ success: false, message: e.message });
+        console.log(e)
+        res.status(500).json({ success: false, message: e.message })
     }
 }
 
 
 const serveDownload = async (req, res) => {
-    const { jobId } = req.query;
+    const { jobId } = req.query
 
     try {
-        if (!jobId) return res.status(400).json({ success: false, message: "jobId is required" });
+        if (!jobId) return res.status(400).json({ success: false, message: "jobId is required" })
 
-        const job = processes.get(jobId);
-        if (!job) return res.status(404).json({ success: false, message: "job not found" });
+        const job = processes.get(jobId)
+        if (!job) return res.status(404).json({ success: false, message: "job not found" })
 
-        if (job.status !== "done") return res.status(400).json({ success: false, message: "download not ready yet" });
+        if (job.status !== "done") return res.status(400).json({ success: false, message: "download not ready yet" })
 
         if (!fs.existsSync(job.outputPath)) {
-            processes.delete(jobId);
-            return res.status(404).json({ success: false, message: "file not found" });
+            processes.delete(jobId)
+            return res.status(404).json({ success: false, message: "file not found" })
         }
 
-        // Extend expiry whenever served
-        job.expiresAt = Date.now() + 30 * 60 * 1000;
+        job.expiresAt = Date.now() + 30 * 60 * 1000
 
-        const stat = fs.statSync(job.outputPath);
-        const fileSize = stat.size;
-        const range = req.headers.range;
+        const stat = fs.statSync(job.outputPath)
+        const fileSize = stat.size
+        const range = req.headers.range
 
         if (!range) {
-            res.setHeader("Content-Length", fileSize);
-            res.setHeader("Content-Type", "video/mp4");
-            res.setHeader("Content-Disposition", `attachment; filename="${job.filename}"`);
-            res.setHeader("Accept-Ranges", "bytes");
-            res.setHeader("Access-Control-Expose-Headers", "Content-Length");
+            res.setHeader("Content-Length", fileSize)
+            res.setHeader("Content-Type", "video/mp4")
+            res.setHeader("Content-Disposition", `attachment; filename="${job.filename}"`)
+            res.setHeader("Accept-Ranges", "bytes")
+            res.setHeader("Access-Control-Expose-Headers", "Content-Length")
 
-            const fileStream = fs.createReadStream(job.outputPath);
-            fileStream.on("error", (err) => { if (!res.writableEnded) res.end(); });
-            // No immediate deletion - cleanup job handles expiry
-            fileStream.pipe(res);
-            return;
+            const fileStream = fs.createReadStream(job.outputPath)
+            fileStream.on("error", (err) => { if (!res.writableEnded) res.end() })
+            fileStream.pipe(res)
+            return
         }
 
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunkSize = end - start + 1;
+        const parts = range.replace(/bytes=/, "").split("-")
+        const start = parseInt(parts[0], 10)
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
+        const chunkSize = end - start + 1
 
         res.writeHead(206, {
             "Content-Range": `bytes ${start}-${end}/${fileSize}`,
@@ -209,18 +207,17 @@ const serveDownload = async (req, res) => {
             "Content-Type": "video/mp4",
             "Content-Disposition": `attachment; filename="${job.filename}"`,
             "Access-Control-Expose-Headers": "Content-Length"
-        });
+        })
 
-        const fileStream = fs.createReadStream(job.outputPath, { start, end });
-        fileStream.on("error", (err) => { if (!res.writableEnded) res.end(); });
-        fileStream.pipe(res);
+        const fileStream = fs.createReadStream(job.outputPath, { start, end })
+        fileStream.on("error", (err) => { if (!res.writableEnded) res.end() })
+        fileStream.pipe(res)
 
     } catch (e) {
-        console.log(e);
-        res.status(500).json({ success: false, message: e.message });
+        console.log(e)
+        res.status(500).json({ success: false, message: e.message })
     }
-}
-
+    }
 
 // Cleanup job - run periodically to remove expired files
 setInterval(() => {
