@@ -2,26 +2,19 @@
 
 echo "Starting build..."
 
-NODE_PATH=$(which node)
-echo "node found at: $NODE_PATH"
+# Install Python and ffmpeg
+apt-get update && apt-get install -y python3 python3-pip ffmpeg
 
-if [ ! -f /usr/local/bin/node ]; then
-    ln -s $NODE_PATH /usr/local/bin/node
-fi
+# Download latest yt-dlp binary
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+chmod a+rx /usr/local/bin/yt-dlp
 
-if [ ! -f /usr/bin/node ]; then
-    ln -s $NODE_PATH /usr/bin/node
-fi
-
-apt-get update && apt-get install -y python3 ffmpeg
-
-mkdir -p /app/operation
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp
-chmod a+rx /app/operation/yt-dlp
-
+# Install npm dependencies
 npm install
 
-echo "node path: $(which node)"
+# Verify installations
+echo "yt-dlp version: $(yt-dlp --version)"
+echo "ffmpeg version: $(ffmpeg -version | head -n 1)"
 echo "node version: $(node --version)"
-echo "yt-dlp version: $(/app/operation/yt-dlp --version)"
+
 echo "Build complete!"
