@@ -46,6 +46,8 @@ function ensureNodeRuntime() {
 
 ensureNodeRuntime()
 
+console.log('yt-dlp location:', execSync('which yt-dlp 2>/dev/null || find / -name yt-dlp 2>/dev/null | head -5').toString().trim())
+
 try {
   console.log('Updating yt-dlp...');
   const out = execSync(`${ytDlpPath} -U`, { encoding: 'utf8' });
