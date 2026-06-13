@@ -144,4 +144,14 @@ function ensureCookiesFile() {
 
 const processes = new Map()
 
+setInterval(() => {
+    const now = Date.now()
+    for (const [fileId, job] of processes.entries()) {
+        if (job.status === "done" && job.expiresAt && now > job.expiresAt) {
+            if (fs.existsSync(job.outputPath)) fs.unlink(job.outputPath, () => {})
+            processes.delete(fileId)
+        }
+    }
+}, 5 * 60 * 1000)
+
 export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments, chooseFormat, ensureCookiesFile, processes}
