@@ -26,6 +26,13 @@ const isWindows = process.platform === "win32";
 const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
+try {
+        const nodePath = process.execPath // actual path of current node process
+        execSync(`ln -sf ${nodePath} /usr/local/bin/node`)
+        console.log('node symlinked from:', nodePath)
+    } catch (e) {
+        console.log('symlink failed:', e.message)
+}
 
 try {
   console.log('Updating yt-dlp...');
