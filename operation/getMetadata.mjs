@@ -42,8 +42,10 @@ const metadataExtractor = async (req, res) => {
             argument.push(url)
             
             if (type === "video") {
-                
-                proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--js-runtimes', 'node', '--remote-components', 'ejs:github', '--extractor-args', 'youtube:player_client=tv,web', url], { stdio: ["ignore", "pipe", "pipe"] })
+                const nodePath = process.execPath // exact path of running node binary
+
+                proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--js-runtimes', `node:${nodePath}`, '--extractor-args', 'youtube:player_client=tv,web', url], { stdio: ["ignore", "pipe", "pipe"] })
+                //proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--js-runtimes', 'node', '--remote-components', 'ejs:github', '--extractor-args', 'youtube:player_client=tv,web', url], { stdio: ["ignore", "pipe", "pipe"] })
             } else if (type === "playlist") {
                 proc = spawn(ytDlpPath, argument, {
                     stdio: ["ignore", "pipe", "pipe"]
