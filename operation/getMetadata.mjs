@@ -27,31 +27,6 @@ async function getYouTubeMetadata(url, cookiePath) {
     const videoId = getVideoId(url)
     if (!videoId) throw new Error('Invalid YouTube URL')
 
-    let cookieHeader = ''
-    try {
-        const cookieFile = fs.readFileSync(cookiePath, 'utf8')
-        cookieHeader = cookieFile.split('\n')
-            .filter(line => line.trim() && !line.startsWith('#'))
-            .map(line => {
-                const parts = line.split('\t')
-                if (parts.length >= 7) return `${parts[5]}=${parts[6].trim()}`
-                return null
-            })
-            .filter(Boolean)
-            .join('; ')
-    } catch (e) {
-        console.log('Cookie parse error:', e.message)
-    }
-
-    const youtube = await Innertube.create({
-    cookie: cookieHeader,
-    generate_session_locally: true,
-    retrieve_player: true,
-    enable_session_cache: false,
-async function getYouTubeMetadata(url, cookiePath) {
-    const videoId = getVideoId(url)
-    if (!videoId) throw new Error('Invalid YouTube URL')
-
     // Define httpHeaders first before anything else
     const httpHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
