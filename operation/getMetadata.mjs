@@ -26,38 +26,39 @@ async function getYouTubeMetadata(url, cookiePath) {
     const videoId = getVideoId(url)
     if (!videoId) throw new Error('Invalid YouTube URL')
 
-    // Parse cookies from Netscape format to object
+    // Parse Netscape cookies to string
     let cookieHeader = ''
     try {
         const cookieFile = fs.readFileSync(cookiePath, 'utf8')
-        const cookies = cookieFile.split('\n')
-            .filter(line => !line.startsWith('#') && line.trim())
+        cookieHeader = cookieFile.split('\n')
+            .filter(line => line.trim() && !line.startsWith('#'))
             .map(line => {
                 const parts = line.split('\t')
-                if (parts.length >= 7) return `${parts[5]}=${parts[6]}`
+                if (parts.length >= 7) return `${parts[5]}=${parts[6].trim()}`
                 return null
             })
             .filter(Boolean)
             .join('; ')
-        cookieHeader = cookies
     } catch (e) {
         console.log('Cookie parse error:', e.message)
     }
 
     const youtube = await Innertube.create({
-        fetch: (input, init) => {
-            const headers = {
-                ...init?.headers,
-                'Cookie': cookieHeader,
-            }
-            return fetch(input, { ...init, headers })
-        }
+        cookie: cookieHeader,
+        generate_session_locally: true,
+        retrieve_player: true,
     })
 
     const info = await youtube.getInfo(videoId)
-    console.log(info)
+
+    // Check if login required
+    if (info.basic_info?.reason?.includes('Sign in') || !info.streaming_data) {
+        throw new Error('YouTube login required - cookies may be expired')
+    }
+
+    const primary = info.primary_info
+    const secondary = info.secondary_info
     const basic = info.basic_info
-    const streamingData = info.streaming_data
 
     const httpHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -68,8 +69,8 @@ async function getYouTubeMetadata(url, cookiePath) {
     }
 
     const allFormats = [
-        ...(streamingData?.formats || []),
-        ...(streamingData?.adaptive_formats || [])
+        ...(info.streaming_data?.formats || []),
+        ...(info.streaming_data?.adaptive_formats || [])
     ]
 
     const formats = allFormats.map(f => {
@@ -97,7 +98,6 @@ async function getYouTubeMetadata(url, cookiePath) {
             format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
             http_headers: httpHeaders,
             protocol: 'https',
-            language: f.audio_track?.id?.split('.')[0] || null,
         }
     })
 
@@ -105,16 +105,15 @@ async function getYouTubeMetadata(url, cookiePath) {
 
     return {
         id: videoId,
-        title: basic.title,
-        description: basic.short_description || '',
-        duration: basic.duration,
-        view_count: basic.view_count,
-        like_count: basic.like_count,
-        channel: basic.channel?.name || basic.author,
-        channel_id: basic.channel_id,
-        uploader: basic.author,
-        uploader_id: basic.channel_id,
-        upload_date: null,
+        title: primary?.title?.text || basic.title || '',
+        description: secondary?.description?.text || '',
+        duration: basic.duration || null,
+        view_count: primary?.view_count?.original_view_count || basic.view_count || null,
+        like_count: basic.like_count || null,
+        channel: secondary?.owner?.author?.name || basic.author || null,
+        channel_id: secondary?.subscribe_button?.channel_id || basic.channel_id || null,
+        uploader: secondary?.owner?.author?.name || basic.author || null,
+        upload_date: primary?.published?.text || null,
         webpage_url: url,
         thumbnail: thumbnails[thumbnails.length - 1]?.url || null,
         thumbnails: thumbnails.map(t => ({ url: t.url, width: t.width, height: t.height })),
