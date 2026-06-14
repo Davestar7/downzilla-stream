@@ -44,80 +44,62 @@ async function getYouTubeMetadata(url, cookiePath) {
     }
 
     const youtube = await Innertube.create({
-        cookie: cookieHeader,
-        generate_session_locally: true,
-        retrieve_player: true,
-        // Provide Node.js evaluator for deciphering
-        po_token_fetcher: undefined,
-    })
+    cookie: cookieHeader,
+    generate_session_locally: true,
+    retrieve_player: true,
+    enable_session_cache: false,
+})
 
-    // Set up JS evaluator using Node.js built-in eval
-    youtube.session.player?.setEvaluator((js) => {
-        const fn = new Function(js)
-        return fn()
-    })
+const info = await youtube.getInfo(videoId)
 
-    const info = await youtube.getInfo(videoId)
+if (!info.streaming_data) {
+    throw new Error('No streaming data - cookies may be expired')
+}
 
-    if (!info.streaming_data) {
-        throw new Error('No streaming data - cookies may be expired')
+// Decipher using the correct method
+const allFormats = [
+    ...(info.streaming_data?.formats || []),
+    ...(info.streaming_data?.adaptive_formats || [])
+]
+
+const formats = allFormats.map(f => {
+    const isVideo = f.has_video
+    const isAudio = f.has_audio
+    const mimeType = f.mime_type || ''
+    const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
+    const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
+
+    // Use url directly - already deciphered when retrieve_player: true
+    let formatUrl = null
+    try {
+        formatUrl = f.decipher(youtube.session.player)
+    } catch (e) {
+        formatUrl = f.url || null
     }
 
-    const primary = info.primary_info
-    const secondary = info.secondary_info
-    const basic = info.basic_info
-
-    const httpHeaders = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Origin': 'https://www.youtube.com',
-        'Referer': 'https://www.youtube.com/',
+    return {
+        format_id: String(f.itag),
+        url: formatUrl,
+        ext,
+        width: f.width || null,
+        height: f.height || null,
+        fps: f.fps || null,
+        filesize: f.content_length ? Number(f.content_length) : null,
+        tbr: f.bitrate ? f.bitrate / 1000 : null,
+        abr: isAudio ? f.bitrate / 1000 : null,
+        vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
+        asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
+        audio_channels: f.audio_channels || null,
+        vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
+        acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
+        resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
+        quality_label: f.quality_label || null,
+        format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
+        http_headers: httpHeaders,
+        protocol: 'https',
+        language: f.audio_track?.id?.split('.')[0] || null,
     }
-
-    const allFormats = [
-        ...(info.streaming_data?.formats || []),
-        ...(info.streaming_data?.adaptive_formats || [])
-    ]
-
-    const formats = allFormats.map(f => {
-        const isVideo = f.has_video
-        const isAudio = f.has_audio
-        const mimeType = f.mime_type || ''
-        const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
-        const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
-
-        let decipheredUrl = null
-        try {
-            decipheredUrl = f.decipher(youtube.session.player)
-        } catch (e) {
-            decipheredUrl = f.url || null
-        }
-
-        return {
-            format_id: String(f.itag),
-            url: decipheredUrl,
-            ext,
-            width: f.width || null,
-            height: f.height || null,
-            fps: f.fps || null,
-            filesize: f.content_length ? Number(f.content_length) : null,
-            tbr: f.bitrate ? f.bitrate / 1000 : null,
-            abr: isAudio ? f.bitrate / 1000 : null,
-            vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
-            asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
-            audio_channels: f.audio_channels || null,
-            vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
-            acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
-            resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
-            quality_label: f.quality_label || null,
-            format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
-            http_headers: httpHeaders,
-            protocol: 'https',
-            language: f.audio_track?.id?.split('.')[0] || null,
-            has_drm: f.has_drm || false,
-        }
-    })
+})
 
     const thumbnails = basic.thumbnail || []
 
