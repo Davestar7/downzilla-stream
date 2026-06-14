@@ -4,7 +4,7 @@ import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
 import { ensureCookiesFile } from "./dependencies.mjs"
 import { Innertube, UniversalCache } from 'youtubei.js'
-import { Transformer } from 'youtubei.js/transformers'
+import { Innertube } from 'youtubei.js'
 import fs from 'fs'
 
 const __filename = fileURLToPath(import.meta.url);
