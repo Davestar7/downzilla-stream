@@ -261,6 +261,8 @@ const stream = async (req, res) => {
         }
     }
 }
+
+/*
 const stream = async (req, res) => {
     const { sid } = req.query
 
