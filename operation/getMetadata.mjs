@@ -45,21 +45,27 @@ async function getYouTubeMetadata(url, cookiePath) {
     }
 
     let cookieHeader = ''
-    try {
-        const cookieFile = fs.readFileSync(cookiePath, 'utf8')
-        cookieHeader = cookieFile.split('\n')
-            .filter(line => line.trim() && !line.startsWith('#'))
-            .map(line => {
-                const parts = line.split('\t')
-                if (parts.length >= 7) return `${parts[5]}=${parts[6].trim()}`
-                return null
-            })
-            .filter(Boolean)
-            .join('; ')
-    } catch (e) {
-        console.log('Cookie parse error:', e.message)
-    }
-
+try {
+    const cookieFile = fs.readFileSync(cookiePath, 'utf8')
+    cookieHeader = cookieFile
+        .split(/\r?\n/)
+        .filter(line => line.trim() && !line.startsWith('#') && !line.startsWith(' '))
+        .map(line => {
+            const parts = line.split('\t')
+            if (parts.length >= 7) {
+                const name = parts[5]?.trim()
+                const value = parts[6]?.trim()
+                if (name && value) return `${name}=${value}`
+            }
+            return null
+        })
+        .filter(Boolean)
+        .join('; ')
+    console.log('Cookie length:', cookieHeader.length)
+    console.log('Has SID:', cookieHeader.includes('SID='))
+} catch (e) {
+    console.log('Cookie parse error:', e.message)
+}
     const youtube = await Innertube.create({
         cookie: cookieHeader,
         generate_session_locally: true,
