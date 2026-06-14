@@ -50,7 +50,7 @@ const metadataExtractor = async (req, res) => {
 
               const argss = ['--cookies', cookie, '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--no-cache-dir', '--js-runtimes', `node:${process.execPath}`, '-j', url]
 
-              proc = spawn('python3', ['-m', 'yt_dlp', ...argss], { stdio: ["ignore", "pipe", "pipe"] })
+              proc = spawn('python3', ['-m', ytDlpPathtwo, ...argss], { stdio: ["ignore", "pipe", "pipe"] })
               
              // proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '-S', '+size,+br', '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', url], { stdio: ["ignore", "pipe", "pipe"] })
               //proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--extractor-args', 'youtube:player_client=android_vr,tv', url], { stdio: ["ignore", "pipe", "pipe"] })
