@@ -297,6 +297,28 @@ function streamFile(req, res, filePath) {
     }
 }
 
+function waitAndStream(req, res, fileId, outputPath) {
+    const wait = setInterval(() => {
+        const entry = processes.get(fileId)
+
+        if (entry && entry.status === "failed") {
+            clearInterval(wait)
+            if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
+            return
+        }
+
+        if (entry && entry.status === "done" && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            clearInterval(wait)
+            entry.expiresAt = Date.now() + 30 * 60 * 1000
+            streamFile(req, res, outputPath)
+        }
+    }, 1000)
+
+    res.on('close', () => {
+        clearInterval(wait)
+    })
+}
+
 /*
 const stream = async (req, res) => {
     const { sid } = req.query
