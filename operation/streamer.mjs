@@ -56,7 +56,6 @@ const knowStreamer = (req, res) => {
     })
 }
 
-
 const stream = async (req, res) => {
     const { sid } = req.query
 
@@ -117,53 +116,55 @@ const stream = async (req, res) => {
             return
         }
 
-        // Check if formats from youtubei.js have direct URLs
         const isYouTube = url.includes('youtube.com') || url.includes('youtu.be')
 
         if (isYouTube && formats && formats.length > 0) {
-            // Use direct URLs from youtubei.js metadata
-            const videoFormat = formats.find(f => 
-                f.vcodec !== 'none' && f.acodec === 'none' && 
-                f.ext === 'mp4' && f.height && f.height <= (newHeight || 1080) && f.url
-            ) || formats.find(f => f.vcodec !== 'none' && f.url)
-
-            const audioFormat = formats.find(f => 
-                f.acodec !== 'none' && f.vcodec === 'none' && f.url
+            // Find best video format with a valid string URL
+            const videoFormat = formats.find(f =>
+                f.vcodec !== 'none' &&
+                f.acodec === 'none' &&
+                f.ext === 'mp4' &&
+                f.height && f.height <= (newHeight || 1080) &&
+                f.url && typeof f.url === 'string' && f.url.startsWith('http')
+            ) || formats.find(f =>
+                f.vcodec !== 'none' &&
+                f.url && typeof f.url === 'string' && f.url.startsWith('http')
             )
 
-              if (isYouTube && formats && formats.length > 0) {
-    const videoFormat = formats.find(f => 
-        f.vcodec !== 'none' && f.acodec === 'none' && 
-        f.ext === 'mp4' && f.height && f.height <= (newHeight || 1080) && 
-        f.url && typeof f.url === 'string'
-    ) || formats.find(f => f.vcodec !== 'none' && f.url && typeof f.url === 'string')
+            // Find best audio format with a valid string URL
+            const audioFormat = formats.find(f =>
+                f.acodec !== 'none' &&
+                f.vcodec === 'none' &&
+                f.url && typeof f.url === 'string' && f.url.startsWith('http')
+            )
 
-    const audioFormat = formats.find(f => 
-        f.acodec !== 'none' && f.vcodec === 'none' && 
-        f.url && typeof f.url === 'string'
-    )
+            console.log('YouTube stream - videoFormat height:', videoFormat?.height, 'hasUrl:', !!videoFormat?.url)
+            console.log('YouTube stream - audioFormat acodec:', audioFormat?.acodec, 'hasUrl:', !!audioFormat?.url)
 
-    // Log to debug
-    console.log('videoFormat url:', videoFormat?.url)
-    console.log('audioFormat url:', audioFormat?.url)
-    console.log('videoFormat url type:', typeof videoFormat?.url)
+            if (videoFormat?.url && audioFormat?.url) {
+                const videoUrl = String(videoFormat.url)
+                const audioUrl = String(audioFormat.url)
 
-    if (videoFormat?.url && audioFormat?.url) {
-        const videoUrl = String(videoFormat.url)
-        const audioUrl = String(audioFormat.url)
+                processes.set(fileId, {
+                    status: "processing",
+                    outputPath,
+                    yt: null,
+                    expiresAt: Date.now() + 30 * 60 * 1000
+                })
 
-        const ffmpegArgs = [
-            '-i', videoUrl,
-            '-i', audioUrl,
-            '-c:v', 'copy',
-            '-c:a', 'aac',
-            '-movflags', '+faststart',
-            '-y',
-            outputPath
-        ]
+                const ffmpegArgs = [
+                    '-i', videoUrl,
+                    '-i', audioUrl,
+                    '-c:v', 'copy',
+                    '-c:a', 'aac',
+                    '-movflags', '+faststart',
+                    '-y',
+                    outputPath
+                ]
+
+                console.log('Spawning ffmpeg for YouTube stream')
 
                 const ffmpeg = spawn(ffmpegPath, ffmpegArgs, { stdio: "pipe", cwd: __dirname })
-
                 processes.get(fileId).yt = ffmpeg
 
                 ffmpeg.stderr.on('data', (data) => {
@@ -178,6 +179,7 @@ const stream = async (req, res) => {
                             entry.expiresAt = Date.now() + 30 * 60 * 1000
                         }
                     } else {
+                        console.log('ffmpeg failed with code:', code)
                         if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
                         if (entry) {
                             entry.status = "failed"
@@ -187,7 +189,8 @@ const stream = async (req, res) => {
                     }
                 })
 
-                ffmpeg.on('error', () => {
+                ffmpeg.on('error', (err) => {
+                    console.log('ffmpeg error:', err.message)
                     const entry = processes.get(fileId)
                     if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
                     if (entry) {
@@ -200,6 +203,8 @@ const stream = async (req, res) => {
                 waitAndStream(req, res, fileId, outputPath)
                 return
             }
+
+            console.log('No valid YouTube format URLs found, falling back to yt-dlp')
         }
 
         // Fallback to yt-dlp for non-YouTube or if no direct URLs
@@ -253,7 +258,8 @@ const stream = async (req, res) => {
             }
         })
 
-        yt.on('error', () => {
+        yt.on('error', (err) => {
+            console.log('yt-dlp error:', err.message)
             const entry = processes.get(fileId)
             job.ready = false
             if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
@@ -274,6 +280,7 @@ const stream = async (req, res) => {
         }
     }
 }
+        
 function streamFile(req, res, filePath) {
     try {
         const stat = fs.statSync(filePath)
