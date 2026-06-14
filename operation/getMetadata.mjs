@@ -55,6 +55,7 @@ async function getYouTubeMetadata(url, cookiePath) {
     })
 
     const info = await youtube.getInfo(videoId)
+    console.log(info)
     const basic = info.basic_info
     const streamingData = info.streaming_data
 
