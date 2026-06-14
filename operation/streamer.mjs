@@ -131,24 +131,36 @@ const stream = async (req, res) => {
                 f.acodec !== 'none' && f.vcodec === 'none' && f.url
             )
 
-            if (videoFormat?.url && audioFormat?.url) {
-                processes.set(fileId, {
-                    status: "processing",
-                    outputPath,
-                    yt: null,
-                    expiresAt: Date.now() + 30 * 60 * 1000
-                })
+              if (isYouTube && formats && formats.length > 0) {
+    const videoFormat = formats.find(f => 
+        f.vcodec !== 'none' && f.acodec === 'none' && 
+        f.ext === 'mp4' && f.height && f.height <= (newHeight || 1080) && 
+        f.url && typeof f.url === 'string'
+    ) || formats.find(f => f.vcodec !== 'none' && f.url && typeof f.url === 'string')
 
-                // Use ffmpeg to merge video and audio from direct URLs
-                const ffmpegArgs = [
-                    '-i', videoFormat.url,
-                    '-i', audioFormat.url,
-                    '-c:v', 'copy',
-                    '-c:a', 'aac',
-                    '-movflags', '+faststart',
-                    '-y',
-                    outputPath
-                ]
+    const audioFormat = formats.find(f => 
+        f.acodec !== 'none' && f.vcodec === 'none' && 
+        f.url && typeof f.url === 'string'
+    )
+
+    // Log to debug
+    console.log('videoFormat url:', videoFormat?.url)
+    console.log('audioFormat url:', audioFormat?.url)
+    console.log('videoFormat url type:', typeof videoFormat?.url)
+
+    if (videoFormat?.url && audioFormat?.url) {
+        const videoUrl = String(videoFormat.url)
+        const audioUrl = String(audioFormat.url)
+
+        const ffmpegArgs = [
+            '-i', videoUrl,
+            '-i', audioUrl,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-movflags', '+faststart',
+            '-y',
+            outputPath
+        ]
 
                 const ffmpeg = spawn(ffmpegPath, ffmpegArgs, { stdio: "pipe", cwd: __dirname })
 
