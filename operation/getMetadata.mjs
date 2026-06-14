@@ -72,7 +72,7 @@ try {
         retrieve_player: true,
     })
 
-    const info = await youtube.getInfo(videoId)
+    const info = await youtube.getBasicInfo(videoId)
 
     if (!info.streaming_data) {
         throw new Error('No streaming data - cookies may be expired')
