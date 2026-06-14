@@ -3,6 +3,8 @@ import { spawn, execSync } from "child_process";
 import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
 import { ensureCookiesFile } from "./dependencies.mjs"
+import { Innertube } from 'youtubei.js'
+import fs from 'fs'
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +14,115 @@ const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
 
-//const ytDlpPathtwo = execSync('python3 -c "import yt_dlp; import os; print(os.path.join(os.path.dirname(yt_dlp.__file__), \'../__main__.py\'))"').toString().trim()
+function isYouTubeUrl(url) {
+    return url.includes('youtube.com') || url.includes('youtu.be')
+}
+
+function getVideoId(url) {
+    return url.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1]
+}
+
+async function getYouTubeMetadata(url, cookiePath) {
+    const videoId = getVideoId(url)
+    if (!videoId) throw new Error('Invalid YouTube URL')
+
+    // Parse cookies from Netscape format to object
+    let cookieHeader = ''
+    try {
+        const cookieFile = fs.readFileSync(cookiePath, 'utf8')
+        const cookies = cookieFile.split('\n')
+            .filter(line => !line.startsWith('#') && line.trim())
+            .map(line => {
+                const parts = line.split('\t')
+                if (parts.length >= 7) return `${parts[5]}=${parts[6]}`
+                return null
+            })
+            .filter(Boolean)
+            .join('; ')
+        cookieHeader = cookies
+    } catch (e) {
+        console.log('Cookie parse error:', e.message)
+    }
+
+    const youtube = await Innertube.create({
+        fetch: (input, init) => {
+            const headers = {
+                ...init?.headers,
+                'Cookie': cookieHeader,
+            }
+            return fetch(input, { ...init, headers })
+        }
+    })
+
+    const info = await youtube.getInfo(videoId)
+    const basic = info.basic_info
+    const streamingData = info.streaming_data
+
+    const httpHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://www.youtube.com',
+        'Referer': 'https://www.youtube.com/',
+    }
+
+    const allFormats = [
+        ...(streamingData?.formats || []),
+        ...(streamingData?.adaptive_formats || [])
+    ]
+
+    const formats = allFormats.map(f => {
+        const isVideo = f.has_video
+        const isAudio = f.has_audio
+        const mimeType = f.mime_type || ''
+        const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
+        const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
+
+        return {
+            format_id: String(f.itag),
+            url: f.decipher(youtube.session.player),
+            ext,
+            width: f.width || null,
+            height: f.height || null,
+            fps: f.fps || null,
+            filesize: f.content_length ? Number(f.content_length) : null,
+            tbr: f.bitrate ? f.bitrate / 1000 : null,
+            asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
+            audio_channels: f.audio_channels || null,
+            vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
+            acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
+            resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
+            quality_label: f.quality_label || null,
+            format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
+            http_headers: httpHeaders,
+            protocol: 'https',
+            language: f.audio_track?.id?.split('.')[0] || null,
+        }
+    })
+
+    const thumbnails = basic.thumbnail || []
+
+    return {
+        id: videoId,
+        title: basic.title,
+        description: basic.short_description || '',
+        duration: basic.duration,
+        view_count: basic.view_count,
+        like_count: basic.like_count,
+        channel: basic.channel?.name || basic.author,
+        channel_id: basic.channel_id,
+        uploader: basic.author,
+        uploader_id: basic.channel_id,
+        upload_date: null,
+        webpage_url: url,
+        thumbnail: thumbnails[thumbnails.length - 1]?.url || null,
+        thumbnails: thumbnails.map(t => ({ url: t.url, width: t.width, height: t.height })),
+        formats,
+        http_headers: httpHeaders,
+        extractor: 'youtube',
+        extractor_key: 'Youtube',
+    }
+}
 
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
@@ -20,51 +130,49 @@ const metadataExtractor = async (req, res) => {
     const theJob = jobs.get(id)
     
     if (!theJob) {
-        return res.status(404).json({message:"id not found"})
+        return res.status(404).json({ message: "id not found" })
     }
+
     const url = theJob.url
     const type = theJob.type
 
-    const options = {
-        timeout: 350000,
-        maxBuffer: 10 * 1024 * 1024 // 10mb
-    }
-
     try {
+        const cookie = ensureCookiesFile()
 
         let argument = arg
 
-        const cookie = ensureCookiesFile()
-
         const outPut = new Promise(async (resolve, reject) => {
             let proc
-            
+
             argument.push("--cookies")
             argument.push(cookie)
             argument.push(url)
-            
+
             if (type === "video") {
-              //const argss = ['--cookies', cookie, '--js-runtimes', 'node','-j','--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist','--force-ipv4',  '--retries', 'infinite','--fragment-retries', 'infinite','--ignore-errors','--no-cache-dir', url];
-              //var argss = ['--cookies', cookie, '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--no-cache-dir', '--js-runtimes', `node:${process.execPath}`, '--remote-components', 'ejs:github', '-j', url]
-              //proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
 
-              const argss = ['--cookies', cookie, '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', '3', '--fragment-retries', '3', '--ignore-errors', '--no-cache-dir', '-j', url]
+                // Use youtubei.js for YouTube URLs to bypass SABR/n-challenge
+                if (isYouTubeUrl(url)) {
+                    try {
+                        const metadata = await getYouTubeMetadata(url, cookie)
+                        return resolve(metadata)
+                    } catch (e) {
+                        console.log('youtubei.js failed, falling back to yt-dlp:', e.message)
+                        // Fall through to yt-dlp if youtubei.js fails
+                    }
+                }
 
-              proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
-             // proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '-S', '+size,+br', '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', url], { stdio: ["ignore", "pipe", "pipe"] })
-              //proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--extractor-args', 'youtube:player_client=android_vr,tv', url], { stdio: ["ignore", "pipe", "pipe"] })
-                //proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--js-runtimes', 'node', '--remote-components', 'ejs:github', '--extractor-args', 'youtube:player_client=tv,web', url], { stdio: ["ignore", "pipe", "pipe"] })
+                const argss = ['--cookies', cookie, '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', '3', '--fragment-retries', '3', '--ignore-errors', '--no-cache-dir', '-j', url]
+                proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
+
             } else if (type === "playlist") {
-                proc = spawn(ytDlpPath, argument, {
-                    stdio: ["ignore", "pipe", "pipe"]
-                })
-            } else if  (type === "audio") {
-                proc = spawn(ytDlpPath, argument, {
-                    stdio: ["ignore", "pipe", "pipe"]
-                })
+                proc = spawn(ytDlpPath, argument, { stdio: ["ignore", "pipe", "pipe"] })
+            } else if (type === "audio") {
+                proc = spawn(ytDlpPath, argument, { stdio: ["ignore", "pipe", "pipe"] })
             } else {
                 return reject("selected option not available")
             }
+
+            if (!proc) return reject("process not started")
 
             theJob.process = proc
             theJob.state = "started"
@@ -80,55 +188,48 @@ const metadataExtractor = async (req, res) => {
                             reject(e.message)
                         }
                     }
-                }, time);
+                }, time)
             }
 
-            let data = "";
-            let error = "";
+            let data = ""
+            let error = ""
 
-            await proc.stdout.on("data", async (chunk) => {
-                const chuck = await chunk.toString()
-                data += chuck
-            });
-          
-            await proc.stderr.on("data", async (chunk) => {
+            proc.stdout.on("data", (chunk) => {
+                data += chunk.toString()
+            })
+
+            proc.stderr.on("data", (chunk) => {
                 console.error('YTDLP STDERR:', chunk.toString())
-                const chuck = await chunk.toString()
-                error += chuck
-            });
-            
+                error += chunk.toString()
+            })
+
             proc.on("close", (code) => {
-                
-                if (time != null) {
-                    timeout.close()
-                }
+                if (time != null) clearTimeout(timeout)
                 if (code === 0) {
                     try {
-                        resolve(JSON.parse(data));
+                        resolve(JSON.parse(data))
                     } catch (err) {
-                        reject(err.message);
-                    }   
+                        reject(err.message)
+                    }
                 } else {
-                    reject(error || `failed with code ${code} possibly cancelled`);
+                    reject(error || `failed with code ${code} possibly cancelled`)
                 }
-            });
-        });
+            })
+        })
 
         try {
             const out = await outPut
             jobs.delete(id)
-            res.status(200).json({data: out})
+            res.status(200).json({ data: out })
         } catch (e) {
             theJob.state = "failed"
             jobs.delete(id)
-            res.status(400).json({message: e})
+            res.status(400).json({ message: e })
         }
+
     } catch (e) {
         jobs.delete(id)
-        res.status(500).json({
-            message: e.message
-        })
+        res.status(500).json({ message: e.message })
     }
 }
-
 export {metadataExtractor}
