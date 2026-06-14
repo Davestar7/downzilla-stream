@@ -88,42 +88,46 @@ try {
     ]
 
     const formats = allFormats.map(f => {
-        const isVideo = f.has_video
-        const isAudio = f.has_audio
-        const mimeType = f.mime_type || ''
-        const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
-        const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
+    const isVideo = f.has_video
+    const isAudio = f.has_audio
+    const mimeType = f.mime_type || ''
+    const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
+    const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
 
-        let formatUrl = null
-        try {
-            formatUrl = f.decipher(youtube.session.player)
-        } catch (e) {
-            formatUrl = f.url || null
-        }
+    let formatUrl = null
+    try {
+        formatUrl = f.decipher(youtube.session.player)
+    } catch (e) {
+        // Skip SABR formats with no URL
+        formatUrl = f.url || null
+    }
 
-        return {
-            format_id: String(f.itag),
-            url: formatUrl,
-            ext,
-            width: f.width || null,
-            height: f.height || null,
-            fps: f.fps || null,
-            filesize: f.content_length ? Number(f.content_length) : null,
-            tbr: f.bitrate ? f.bitrate / 1000 : null,
-            abr: isAudio ? f.bitrate / 1000 : null,
-            vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
-            asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
-            audio_channels: f.audio_channels || null,
-            vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
-            acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
-            resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
-            quality_label: f.quality_label || null,
-            format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
-            http_headers: httpHeaders,
-            protocol: 'https',
-            language: f.audio_track?.id?.split('.')[0] || null,
-        }
-    })
+    // Skip formats with no valid URL
+    if (!formatUrl) return null
+
+    return {
+        format_id: String(f.itag),
+        url: formatUrl,
+        ext,
+        width: f.width || null,
+        height: f.height || null,
+        fps: f.fps || null,
+        filesize: f.content_length ? Number(f.content_length) : null,
+        tbr: f.bitrate ? f.bitrate / 1000 : null,
+        abr: isAudio ? f.bitrate / 1000 : null,
+        vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
+        asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
+        audio_channels: f.audio_channels || null,
+        vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
+        acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
+        resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
+        quality_label: f.quality_label || null,
+        format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
+        http_headers: httpHeaders,
+        protocol: 'https',
+        language: f.audio_track?.id?.split('.')[0] || null,
+    }
+}).filter(Boolean) // Remove null entries
 
     const thumbnails = basic.thumbnail || []
 
