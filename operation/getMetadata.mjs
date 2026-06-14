@@ -74,53 +74,65 @@ async function getYouTubeMetadata(url, cookiePath) {
     ]
 
     const formats = allFormats.map(f => {
-        const isVideo = f.has_video
-        const isAudio = f.has_audio
-        const mimeType = f.mime_type || ''
-        const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
-        const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
+      const isVideo = f.has_video
+      const isAudio = f.has_audio
+      const mimeType = f.mime_type || ''
+      const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
+      const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
+      const decipheredUrl = f.decipher(youtube.session.player)
 
-        return {
-            format_id: String(f.itag),
-            url: f.decipher(youtube.session.player),
-            ext,
-            width: f.width || null,
-            height: f.height || null,
-            fps: f.fps || null,
-            filesize: f.content_length ? Number(f.content_length) : null,
-            tbr: f.bitrate ? f.bitrate / 1000 : null,
-            asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
-            audio_channels: f.audio_channels || null,
-            vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
-            acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
-            resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
-            quality_label: f.quality_label || null,
-            format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
-            http_headers: httpHeaders,
-            protocol: 'https',
-        }
-    })
+      return {
+        format_id: String(f.itag),
+        url: decipheredUrl,
+        manifest_url: null,
+        ext,
+        width: f.width || null,
+        height: f.height || null,
+        fps: f.fps || null,
+        filesize: f.content_length ? Number(f.content_length) : null,
+        filesize_approx: f.approx_duration_ms ? null : null,
+        tbr: f.bitrate ? f.bitrate / 1000 : null,
+        abr: f.audio_quality ? f.bitrate / 1000 : null,
+        vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
+        asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
+        audio_channels: f.audio_channels || null,
+        vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
+        acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
+        resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
+        quality_label: f.quality_label || null,
+        format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
+        http_headers: httpHeaders,
+        protocol: 'https',
+        language: f.audio_track?.id?.split('.')[0] || null,
+        has_drm: f.has_drm || false,
+     }
+  })
 
     const thumbnails = basic.thumbnail || []
 
     return {
-        id: videoId,
-        title: primary?.title?.text || basic.title || '',
-        description: secondary?.description?.text || '',
-        duration: basic.duration || null,
-        view_count: primary?.view_count?.original_view_count || basic.view_count || null,
-        like_count: basic.like_count || null,
-        channel: secondary?.owner?.author?.name || basic.author || null,
-        channel_id: secondary?.subscribe_button?.channel_id || basic.channel_id || null,
-        uploader: secondary?.owner?.author?.name || basic.author || null,
-        upload_date: primary?.published?.text || null,
-        webpage_url: url,
-        thumbnail: thumbnails[thumbnails.length - 1]?.url || null,
-        thumbnails: thumbnails.map(t => ({ url: t.url, width: t.width, height: t.height })),
-        formats,
-        http_headers: httpHeaders,
-        extractor: 'youtube',
-        extractor_key: 'Youtube',
+     id: videoId,
+     title: primary?.title?.text || basic.title || '',
+     description: secondary?.description?.text || '',
+     duration: basic.duration || null,
+     view_count: primary?.view_count?.original_view_count || basic.view_count || null,
+     like_count: basic.like_count || null,
+     channel: secondary?.owner?.author?.name || basic.author || null,
+     channel_id: secondary?.subscribe_button?.channel_id || basic.channel_id || null,
+     uploader: secondary?.owner?.author?.name || basic.author || null,
+     uploader_id: secondary?.subscribe_button?.channel_id || null,
+     upload_date: primary?.published?.text || null,
+     webpage_url: url,                          // original URL passed by user
+     original_url: url,                         // same as yt-dlp's original_url
+     webpage_url_basename: 'watch',
+     webpage_url_domain: 'youtube.com',
+     extractor: 'youtube',
+     extractor_key: 'Youtube',
+     thumbnail: thumbnails[thumbnails.length - 1]?.url || null,
+     thumbnails: thumbnails.map(t => ({ url: t.url, width: t.width, height: t.height })),
+     formats,
+     http_headers: httpHeaders,
+     requested_formats: formats.filter(f => f.vcodec !== 'none' && f.acodec !== 'none'),
     }
 }
 
