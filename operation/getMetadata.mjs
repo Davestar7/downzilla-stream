@@ -1,5 +1,5 @@
 import path from "path"
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
 import { ensureCookiesFile } from "./dependencies.mjs"
