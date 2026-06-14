@@ -88,6 +88,7 @@ try {
     ]
 
     const formats = allFormats.map(f => {
+    console.log('format itag:', f.itag, 'raw url:', f.url, 'type:', typeof f.url)
     const isVideo = f.has_video
     const isAudio = f.has_audio
     const mimeType = f.mime_type || ''
