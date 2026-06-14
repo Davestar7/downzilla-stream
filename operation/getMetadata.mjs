@@ -145,34 +145,6 @@ async function getYouTubeMetadata(url, cookiePath) {
         http_headers: httpHeaders,
         requested_formats: formats.filter(f => f.vcodec !== 'none' && f.acodec !== 'none'),
     }
-          }
-
-    const thumbnails = basic.thumbnail || []
-
-    return {
-     id: videoId,
-     title: primary?.title?.text || basic.title || '',
-     description: secondary?.description?.text || '',
-     duration: basic.duration || null,
-     view_count: primary?.view_count?.original_view_count || basic.view_count || null,
-     like_count: basic.like_count || null,
-     channel: secondary?.owner?.author?.name || basic.author || null,
-     channel_id: secondary?.subscribe_button?.channel_id || basic.channel_id || null,
-     uploader: secondary?.owner?.author?.name || basic.author || null,
-     uploader_id: secondary?.subscribe_button?.channel_id || null,
-     upload_date: primary?.published?.text || null,
-     webpage_url: url,                          // original URL passed by user
-     original_url: url,                         // same as yt-dlp's original_url
-     webpage_url_basename: 'watch',
-     webpage_url_domain: 'youtube.com',
-     extractor: 'youtube',
-     extractor_key: 'Youtube',
-     thumbnail: thumbnails[thumbnails.length - 1]?.url || null,
-     thumbnails: thumbnails.map(t => ({ url: t.url, width: t.width, height: t.height })),
-     formats,
-     http_headers: httpHeaders,
-     requested_formats: formats.filter(f => f.vcodec !== 'none' && f.acodec !== 'none'),
-    }
 }
 
 const metadataExtractor = async (req, res) => {
