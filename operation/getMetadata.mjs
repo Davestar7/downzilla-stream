@@ -3,7 +3,8 @@ import { spawn, execSync } from "child_process";
 import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
 import { ensureCookiesFile } from "./dependencies.mjs"
-import { Innertube } from 'youtubei.js'
+import { Innertube, UniversalCache } from 'youtubei.js'
+import { Transformer } from 'youtubei.js/transformers'
 import fs from 'fs'
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,7 +27,6 @@ async function getYouTubeMetadata(url, cookiePath) {
     const videoId = getVideoId(url)
     if (!videoId) throw new Error('Invalid YouTube URL')
 
-    // Parse Netscape cookies to string
     let cookieHeader = ''
     try {
         const cookieFile = fs.readFileSync(cookiePath, 'utf8')
@@ -47,13 +47,20 @@ async function getYouTubeMetadata(url, cookiePath) {
         cookie: cookieHeader,
         generate_session_locally: true,
         retrieve_player: true,
+        // Provide Node.js evaluator for deciphering
+        po_token_fetcher: undefined,
+    })
+
+    // Set up JS evaluator using Node.js built-in eval
+    youtube.session.player?.setEvaluator((js) => {
+        const fn = new Function(js)
+        return fn()
     })
 
     const info = await youtube.getInfo(videoId)
 
-    // Check if login required
-    if (info.basic_info?.reason?.includes('Sign in') || !info.streaming_data) {
-        throw new Error('YouTube login required - cookies may be expired')
+    if (!info.streaming_data) {
+        throw new Error('No streaming data - cookies may be expired')
     }
 
     const primary = info.primary_info
@@ -74,39 +81,71 @@ async function getYouTubeMetadata(url, cookiePath) {
     ]
 
     const formats = allFormats.map(f => {
-      const isVideo = f.has_video
-      const isAudio = f.has_audio
-      const mimeType = f.mime_type || ''
-      const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
-      const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
-      const decipheredUrl = f.decipher(youtube.session.player)
+        const isVideo = f.has_video
+        const isAudio = f.has_audio
+        const mimeType = f.mime_type || ''
+        const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
+        const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
 
-      return {
-        format_id: String(f.itag),
-        url: decipheredUrl,
-        manifest_url: null,
-        ext,
-        width: f.width || null,
-        height: f.height || null,
-        fps: f.fps || null,
-        filesize: f.content_length ? Number(f.content_length) : null,
-        filesize_approx: f.approx_duration_ms ? null : null,
-        tbr: f.bitrate ? f.bitrate / 1000 : null,
-        abr: f.audio_quality ? f.bitrate / 1000 : null,
-        vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
-        asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
-        audio_channels: f.audio_channels || null,
-        vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
-        acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
-        resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
-        quality_label: f.quality_label || null,
-        format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
+        let decipheredUrl = null
+        try {
+            decipheredUrl = f.decipher(youtube.session.player)
+        } catch (e) {
+            decipheredUrl = f.url || null
+        }
+
+        return {
+            format_id: String(f.itag),
+            url: decipheredUrl,
+            ext,
+            width: f.width || null,
+            height: f.height || null,
+            fps: f.fps || null,
+            filesize: f.content_length ? Number(f.content_length) : null,
+            tbr: f.bitrate ? f.bitrate / 1000 : null,
+            abr: isAudio ? f.bitrate / 1000 : null,
+            vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
+            asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
+            audio_channels: f.audio_channels || null,
+            vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
+            acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
+            resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
+            quality_label: f.quality_label || null,
+            format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
+            http_headers: httpHeaders,
+            protocol: 'https',
+            language: f.audio_track?.id?.split('.')[0] || null,
+            has_drm: f.has_drm || false,
+        }
+    })
+
+    const thumbnails = basic.thumbnail || []
+
+    return {
+        id: videoId,
+        title: primary?.title?.text || basic.title || '',
+        description: secondary?.description?.text || '',
+        duration: basic.duration || null,
+        view_count: primary?.view_count?.original_view_count || basic.view_count || null,
+        like_count: basic.like_count || null,
+        channel: secondary?.owner?.author?.name || basic.author || null,
+        channel_id: secondary?.subscribe_button?.channel_id || basic.channel_id || null,
+        uploader: secondary?.owner?.author?.name || basic.author || null,
+        uploader_id: secondary?.subscribe_button?.channel_id || null,
+        upload_date: primary?.published?.text || null,
+        webpage_url: url,
+        original_url: url,
+        webpage_url_basename: 'watch',
+        webpage_url_domain: 'youtube.com',
+        extractor: 'youtube',
+        extractor_key: 'Youtube',
+        thumbnail: thumbnails[thumbnails.length - 1]?.url || null,
+        thumbnails: thumbnails.map(t => ({ url: t.url, width: t.width, height: t.height })),
+        formats,
         http_headers: httpHeaders,
-        protocol: 'https',
-        language: f.audio_track?.id?.split('.')[0] || null,
-        has_drm: f.has_drm || false,
-     }
-  })
+        requested_formats: formats.filter(f => f.vcodec !== 'none' && f.acodec !== 'none'),
+    }
+          }
 
     const thumbnails = basic.thumbnail || []
 
