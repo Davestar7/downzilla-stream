@@ -12,7 +12,7 @@ const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
 
-const ytDlpPathtwo = execSync('python3 -c "import yt_dlp; import os; print(os.path.join(os.path.dirname(yt_dlp.__file__), \'../__main__.py\'))"').toString().trim()
+//const ytDlpPathtwo = execSync('python3 -c "import yt_dlp; import os; print(os.path.join(os.path.dirname(yt_dlp.__file__), \'../__main__.py\'))"').toString().trim()
 
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
@@ -48,10 +48,9 @@ const metadataExtractor = async (req, res) => {
               //var argss = ['--cookies', cookie, '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--no-cache-dir', '--js-runtimes', `node:${process.execPath}`, '--remote-components', 'ejs:github', '-j', url]
               //proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
 
-              const argss = ['--cookies', cookie, '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--no-cache-dir', '--js-runtimes', `node:${process.execPath}`, '-j', url]
+              const argss = ['--cookies', cookie, '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', '3', '--fragment-retries', '3', '--ignore-errors', '--no-cache-dir', '-j', url]
 
-              proc = spawn('python3', ['-m', ytDlpPathtwo, ...argss], { stdio: ["ignore", "pipe", "pipe"] })
-              
+              proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
              // proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '-S', '+size,+br', '--no-warnings', '--skip-download', '--no-check-certificate', '--no-playlist', '--force-ipv4', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', url], { stdio: ["ignore", "pipe", "pipe"] })
               //proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--extractor-args', 'youtube:player_client=android_vr,tv', url], { stdio: ["ignore", "pipe", "pipe"] })
                 //proc = spawn(ytDlpPath, ['--cookies', cookie, '-j', '--skip-download', '--no-check-certificate', '--no-playlist', '--retries', 'infinite', '--fragment-retries', 'infinite', '--ignore-errors', '--no-cache-dir', '--js-runtimes', 'node', '--remote-components', 'ejs:github', '--extractor-args', 'youtube:player_client=tv,web', url], { stdio: ["ignore", "pipe", "pipe"] })
