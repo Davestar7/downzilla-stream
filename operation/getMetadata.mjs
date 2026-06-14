@@ -48,58 +48,96 @@ async function getYouTubeMetadata(url, cookiePath) {
     generate_session_locally: true,
     retrieve_player: true,
     enable_session_cache: false,
-})
+async function getYouTubeMetadata(url, cookiePath) {
+    const videoId = getVideoId(url)
+    if (!videoId) throw new Error('Invalid YouTube URL')
 
-const info = await youtube.getInfo(videoId)
+    // Define httpHeaders first before anything else
+    const httpHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://www.youtube.com',
+        'Referer': 'https://www.youtube.com/',
+    }
 
-if (!info.streaming_data) {
-    throw new Error('No streaming data - cookies may be expired')
-}
-
-// Decipher using the correct method
-const allFormats = [
-    ...(info.streaming_data?.formats || []),
-    ...(info.streaming_data?.adaptive_formats || [])
-]
-
-const formats = allFormats.map(f => {
-    const isVideo = f.has_video
-    const isAudio = f.has_audio
-    const mimeType = f.mime_type || ''
-    const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
-    const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
-
-    // Use url directly - already deciphered when retrieve_player: true
-    let formatUrl = null
+    let cookieHeader = ''
     try {
-        formatUrl = f.decipher(youtube.session.player)
+        const cookieFile = fs.readFileSync(cookiePath, 'utf8')
+        cookieHeader = cookieFile.split('\n')
+            .filter(line => line.trim() && !line.startsWith('#'))
+            .map(line => {
+                const parts = line.split('\t')
+                if (parts.length >= 7) return `${parts[5]}=${parts[6].trim()}`
+                return null
+            })
+            .filter(Boolean)
+            .join('; ')
     } catch (e) {
-        formatUrl = f.url || null
+        console.log('Cookie parse error:', e.message)
     }
 
-    return {
-        format_id: String(f.itag),
-        url: formatUrl,
-        ext,
-        width: f.width || null,
-        height: f.height || null,
-        fps: f.fps || null,
-        filesize: f.content_length ? Number(f.content_length) : null,
-        tbr: f.bitrate ? f.bitrate / 1000 : null,
-        abr: isAudio ? f.bitrate / 1000 : null,
-        vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
-        asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
-        audio_channels: f.audio_channels || null,
-        vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
-        acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
-        resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
-        quality_label: f.quality_label || null,
-        format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
-        http_headers: httpHeaders,
-        protocol: 'https',
-        language: f.audio_track?.id?.split('.')[0] || null,
+    const youtube = await Innertube.create({
+        cookie: cookieHeader,
+        generate_session_locally: true,
+        retrieve_player: true,
+        enable_session_cache: false,
+        // Provide JS evaluator using Node.js Function constructor
+        js_evaluator: (js) => new Function(js)(),
+    })
+
+    const info = await youtube.getInfo(videoId)
+
+    if (!info.streaming_data) {
+        throw new Error('No streaming data - cookies may be expired')
     }
-})
+
+    const primary = info.primary_info
+    const secondary = info.secondary_info
+    const basic = info.basic_info
+
+    const allFormats = [
+        ...(info.streaming_data?.formats || []),
+        ...(info.streaming_data?.adaptive_formats || [])
+    ]
+
+    const formats = allFormats.map(f => {
+        const isVideo = f.has_video
+        const isAudio = f.has_audio
+        const mimeType = f.mime_type || ''
+        const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
+        const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
+
+        let formatUrl = null
+        try {
+            formatUrl = f.decipher(youtube.session.player)
+        } catch (e) {
+            formatUrl = f.url || null
+        }
+
+        return {
+            format_id: String(f.itag),
+            url: formatUrl,
+            ext,
+            width: f.width || null,
+            height: f.height || null,
+            fps: f.fps || null,
+            filesize: f.content_length ? Number(f.content_length) : null,
+            tbr: f.bitrate ? f.bitrate / 1000 : null,
+            abr: isAudio ? f.bitrate / 1000 : null,
+            vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
+            asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
+            audio_channels: f.audio_channels || null,
+            vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
+            acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
+            resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
+            quality_label: f.quality_label || null,
+            format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
+            http_headers: httpHeaders,
+            protocol: 'https',
+            language: f.audio_track?.id?.split('.')[0] || null,
+        }
+    })
 
     const thumbnails = basic.thumbnail || []
 
