@@ -1,9 +1,9 @@
 import path from "path"
-import { spawn, execSync } from "child_process";
+import { spawn } from "child_process";
 import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
 import { ensureCookiesFile } from "./dependencies.mjs"
-import { Innertube, UniversalCache } from 'youtubei.js'
+import { Innertube, UniversalCache, Platform } from 'youtubei.js'
 //import { Innertube } from 'youtubei.js'
 import fs from 'fs'
 
@@ -23,11 +23,19 @@ function getVideoId(url) {
     return url.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1]
 }
 
+// Set up JS evaluator ONCE at module level before any Innertube.create() calls
+Platform.shim.eval = async (data, env) => {
+    const properties = []
+    if (env.n) properties.push(`n: exportedVars.nFunction("${env.n}")`)
+    if (env.sig) properties.push(`sig: exportedVars.sigFunction("${env.sig}")`)
+    const code = `${data.output}\nreturn { ${properties.join(', ')} }`
+    return new Function(code)()
+}
+
 async function getYouTubeMetadata(url, cookiePath) {
     const videoId = getVideoId(url)
     if (!videoId) throw new Error('Invalid YouTube URL')
 
-    // Define httpHeaders first before anything else
     const httpHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': '*/*',
@@ -56,9 +64,6 @@ async function getYouTubeMetadata(url, cookiePath) {
         cookie: cookieHeader,
         generate_session_locally: true,
         retrieve_player: true,
-        enable_session_cache: false,
-        // Provide JS evaluator using Node.js Function constructor
-        js_evaluator: (js) => new Function(js)(),
     })
 
     const info = await youtube.getInfo(videoId)
