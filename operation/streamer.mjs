@@ -75,7 +75,7 @@ const stream = async (req, res) => {
 
         if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
             const selected = selectvideoformat(formats)
-            formatc = chooseFormat(Number(selected.height))
+            formatc = chooseFormat(Number(selected?.height))
         }
 
         if (!formatc) {
@@ -84,7 +84,6 @@ const stream = async (req, res) => {
 
         const newtitle = sanname(title).toString().toLowerCase().trim()
 
-        // Generate fileId - use vid if not null, otherwise use title
         let fileId
         if (vid) {
             fileId = crypto.createHash('md5').update(`${vid}-${formatc || 'default'}`).digest('hex')
@@ -98,7 +97,7 @@ const stream = async (req, res) => {
         req.socket.setKeepAlive(true, 3000)
         res.setTimeout(0)
 
-        // Reuse existing file (created by download OR stream)
+        // Reuse existing file
         if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
             let entry = processes.get(fileId)
             if (!entry) {
@@ -106,23 +105,91 @@ const stream = async (req, res) => {
                 processes.set(fileId, entry)
             }
             entry.expiresAt = Date.now() + 30 * 60 * 1000
-            job.outputFile = outputPath
-            job.ready = true
             streamFile(req, res, outputPath)
             return
         }
 
-        // Reuse in-progress job (started by download OR stream)
+        // Reuse in-progress job
         let entry = processes.get(fileId)
-
         if (entry && entry.status === "processing") {
-            job.outputFile = outputPath
-            job.yt = entry.yt
-            job.ready = false
             waitAndStream(req, res, fileId, outputPath)
             return
         }
 
+        // Check if formats from youtubei.js have direct URLs
+        const isYouTube = url.includes('youtube.com') || url.includes('youtu.be')
+
+        if (isYouTube && formats && formats.length > 0) {
+            // Use direct URLs from youtubei.js metadata
+            const videoFormat = formats.find(f => 
+                f.vcodec !== 'none' && f.acodec === 'none' && 
+                f.ext === 'mp4' && f.height && f.height <= (newHeight || 1080) && f.url
+            ) || formats.find(f => f.vcodec !== 'none' && f.url)
+
+            const audioFormat = formats.find(f => 
+                f.acodec !== 'none' && f.vcodec === 'none' && f.url
+            )
+
+            if (videoFormat?.url && audioFormat?.url) {
+                processes.set(fileId, {
+                    status: "processing",
+                    outputPath,
+                    yt: null,
+                    expiresAt: Date.now() + 30 * 60 * 1000
+                })
+
+                // Use ffmpeg to merge video and audio from direct URLs
+                const ffmpegArgs = [
+                    '-i', videoFormat.url,
+                    '-i', audioFormat.url,
+                    '-c:v', 'copy',
+                    '-c:a', 'aac',
+                    '-movflags', '+faststart',
+                    '-y',
+                    outputPath
+                ]
+
+                const ffmpeg = spawn(ffmpegPath, ffmpegArgs, { stdio: "pipe", cwd: __dirname })
+
+                processes.get(fileId).yt = ffmpeg
+
+                ffmpeg.stderr.on('data', (data) => {
+                    console.log('ffmpeg:', data.toString())
+                })
+
+                ffmpeg.on('close', (code) => {
+                    const entry = processes.get(fileId)
+                    if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                        if (entry) {
+                            entry.status = "done"
+                            entry.expiresAt = Date.now() + 30 * 60 * 1000
+                        }
+                    } else {
+                        if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+                        if (entry) {
+                            entry.status = "failed"
+                            processes.delete(fileId)
+                        }
+                        tk.delete(sid)
+                    }
+                })
+
+                ffmpeg.on('error', () => {
+                    const entry = processes.get(fileId)
+                    if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+                    if (entry) {
+                        entry.status = "failed"
+                        processes.delete(fileId)
+                    }
+                    tk.delete(sid)
+                })
+
+                waitAndStream(req, res, fileId, outputPath)
+                return
+            }
+        }
+
+        // Fallback to yt-dlp for non-YouTube or if no direct URLs
         let headerArgs = []
         if (headers && typeof headers === "object") {
             for (const [key, value] of Object.entries(headers)) {
@@ -131,16 +198,12 @@ const stream = async (req, res) => {
         }
 
         const cookie = ensureCookiesFile()
+        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--cookies', cookie, ...headerArgs, '-o', outputPath]
 
-        //const ytdlpArg = [url, '--js-runtimes', 'node', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=web', '--cookies', cookie, ...headerArgs, '-o', outputPath]
-        const ytdlpArg = [url, '--js-runtimes', 'node', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=android_vr', '--cookies', cookie, ...headerArgs, '-o', outputPath];
         let yt
 
         try {
-            yt = spawn(ytDlpPath, ytdlpArg, {
-                stdio: "pipe",
-                cwd: __dirname
-            })
+            yt = spawn(ytDlpPath, ytdlpArg, { stdio: "pipe", cwd: __dirname })
 
             job.yt = yt
             job.outputFile = outputPath
@@ -155,15 +218,11 @@ const stream = async (req, res) => {
 
         } catch (e) {
             tk.delete(sid)
-            return res.status(501).json({
-                success: false,
-                message: "error trying to download request: " + e
-            })
+            return res.status(501).json({ success: false, message: "error trying to download request: " + e })
         }
 
         yt.on('close', (code) => {
             const entry = processes.get(fileId)
-
             if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
                 job.ready = true
                 if (entry) {
@@ -202,65 +261,6 @@ const stream = async (req, res) => {
         }
     }
 }
-
-function waitAndStream(req, res, fileId, outputPath) {
-    const wait = setInterval(() => {
-        const entry = processes.get(fileId)
-
-        if (entry && entry.status === "failed") {
-            clearInterval(wait)
-            if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
-            return
-        }
-
-        if (entry && entry.status === "done" && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-            clearInterval(wait)
-            entry.expiresAt = Date.now() + 30 * 60 * 1000
-            streamFile(req, res, outputPath)
-        }
-    }, 1000)
-
-    res.on('close', () => {
-        clearInterval(wait)
-    })
-}
-
-function streamFile(req, res, filePath) {
-    try {
-        const stat = fs.statSync(filePath)
-        const fileSize = stat.size
-        const range = req.headers.range
-
-        if (!range) {
-            res.writeHead(200, {
-                "Content-Length": fileSize,
-                "Content-Type": "video/mp4",
-                "Accept-Ranges": "bytes"
-            })
-            fs.createReadStream(filePath).pipe(res)
-            return
-        }
-
-        const parts = range.replace(/bytes=/, "").split("-")
-        const start = parseInt(parts[0], 10)
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
-        const chunkSize = end - start + 1
-
-        res.writeHead(206, {
-            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-            "Accept-Ranges": "bytes",
-            "Content-Length": chunkSize,
-            "Content-Type": "video/mp4"
-        })
-
-        fs.createReadStream(filePath, { start, end }).pipe(res)
-    } catch (e) {
-        console.log('streamFile error:', e.message)
-        if (!res.writableEnded) res.status(500).end()
-    }
-}
-
-/*
 const stream = async (req, res) => {
     const { sid } = req.query
 
