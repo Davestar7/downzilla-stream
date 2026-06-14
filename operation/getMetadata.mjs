@@ -45,42 +45,42 @@ async function getYouTubeMetadata(url, cookiePath) {
     }
 
     let cookieHeader = ''
-try {
-    const cookieFile = fs.readFileSync(cookiePath, 'utf8')
-    cookieHeader = cookieFile
-        .split(/\r?\n/)
-        .filter(line => line.trim() && !line.startsWith('#') && !line.startsWith(' '))
-        .map(line => {
-            const parts = line.split('\t')
-            if (parts.length >= 7) {
-                const name = parts[5]?.trim()
-                const value = parts[6]?.trim()
-                if (name && value) return `${name}=${value}`
-            }
-            return null
-        })
-        .filter(Boolean)
-        .join('; ')
-    console.log('Cookie length:', cookieHeader.length)
-    console.log('Has SID:', cookieHeader.includes('SID='))
-} catch (e) {
-    console.log('Cookie parse error:', e.message)
-}
+    try {
+        const cookieFile = fs.readFileSync(cookiePath, 'utf8')
+        cookieHeader = cookieFile
+            .split(/\r?\n/)
+            .filter(line => line.trim() && !line.startsWith('#'))
+            .map(line => {
+                const parts = line.split('\t')
+                if (parts.length >= 7) {
+                    const name = parts[5]?.trim()
+                    const value = parts[6]?.trim()
+                    if (name && value) return `${name}=${value}`
+                }
+                return null
+            })
+            .filter(Boolean)
+            .join('; ')
+        console.log('Cookie length:', cookieHeader.length)
+        console.log('Has SID:', cookieHeader.includes('SID='))
+    } catch (e) {
+        console.log('Cookie parse error:', e.message)
+    }
+
     const youtube = await Innertube.create({
         cookie: cookieHeader,
         generate_session_locally: true,
         retrieve_player: true,
     })
 
-    const info = await youtube.getBasicInfo(videoId)
+    const info = await youtube.getBasicInfo(videoId, 'WEB')
+
+    console.log('streaming_data exists:', !!info.streaming_data)
+    console.log('formats count:', info.streaming_data?.adaptive_formats?.length)
 
     if (!info.streaming_data) {
         throw new Error('No streaming data - cookies may be expired')
     }
-
-    const primary = info.primary_info
-    const secondary = info.secondary_info
-    const basic = info.basic_info
 
     const allFormats = [
         ...(info.streaming_data?.formats || []),
@@ -88,62 +88,71 @@ try {
     ]
 
     const formats = allFormats.map(f => {
-    console.log('format itag:', f.itag, 'raw url:', f.url, 'type:', typeof f.url)
-    const isVideo = f.has_video
-    const isAudio = f.has_audio
-    const mimeType = f.mime_type || ''
-    const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
-    const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
+        const isVideo = f.has_video
+        const isAudio = f.has_audio
+        const mimeType = f.mime_type || ''
+        const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
+        const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
 
-    let formatUrl = null
-    try {
-        formatUrl = f.decipher(youtube.session.player)
-    } catch (e) {
-        // Skip SABR formats with no URL
-        formatUrl = f.url || null
-    }
+        // Try decipher first, then fallback to f.url
+        let formatUrl = null
+        try {
+            if (youtube.session.player) {
+                formatUrl = f.decipher(youtube.session.player)
+            }
+        } catch (e) {
+            // ignore
+        }
 
-    // Skip formats with no valid URL
-    if (!formatUrl) return null
+        if (!formatUrl && f.url) {
+            formatUrl = typeof f.url === 'string' ? f.url : null
+        }
 
-    return {
-        format_id: String(f.itag),
-        url: formatUrl,
-        ext,
-        width: f.width || null,
-        height: f.height || null,
-        fps: f.fps || null,
-        filesize: f.content_length ? Number(f.content_length) : null,
-        tbr: f.bitrate ? f.bitrate / 1000 : null,
-        abr: isAudio ? f.bitrate / 1000 : null,
-        vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
-        asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
-        audio_channels: f.audio_channels || null,
-        vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
-        acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
-        resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
-        quality_label: f.quality_label || null,
-        format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
-        http_headers: httpHeaders,
-        protocol: 'https',
-        language: f.audio_track?.id?.split('.')[0] || null,
-    }
-}).filter(Boolean) // Remove null entries
+        console.log(`format itag: ${f.itag} hasUrl: ${!!formatUrl}`)
 
+        if (!formatUrl) return null
+
+        return {
+            format_id: String(f.itag),
+            url: formatUrl,
+            ext,
+            width: f.width || null,
+            height: f.height || null,
+            fps: f.fps || null,
+            filesize: f.content_length ? Number(f.content_length) : null,
+            tbr: f.bitrate ? f.bitrate / 1000 : null,
+            abr: isAudio ? f.bitrate / 1000 : null,
+            vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
+            asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
+            audio_channels: f.audio_channels || null,
+            vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
+            acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
+            resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
+            quality_label: f.quality_label || null,
+            format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
+            http_headers: httpHeaders,
+            protocol: 'https',
+            language: f.audio_track?.id?.split('.')[0] || null,
+        }
+    }).filter(Boolean)
+
+    console.log('Valid formats with URLs:', formats.length)
+
+    const basic = info.basic_info
     const thumbnails = basic.thumbnail || []
 
     return {
         id: videoId,
-        title: primary?.title?.text || basic.title || '',
-        description: secondary?.description?.text || '',
+        title: basic.title || '',
+        description: basic.short_description || '',
         duration: basic.duration || null,
-        view_count: primary?.view_count?.original_view_count || basic.view_count || null,
+        view_count: basic.view_count || null,
         like_count: basic.like_count || null,
-        channel: secondary?.owner?.author?.name || basic.author || null,
-        channel_id: secondary?.subscribe_button?.channel_id || basic.channel_id || null,
-        uploader: secondary?.owner?.author?.name || basic.author || null,
-        uploader_id: secondary?.subscribe_button?.channel_id || null,
-        upload_date: primary?.published?.text || null,
+        channel: basic.author || null,
+        channel_id: basic.channel_id || null,
+        uploader: basic.author || null,
+        uploader_id: basic.channel_id || null,
+        upload_date: null,
         webpage_url: url,
         original_url: url,
         webpage_url_basename: 'watch',
