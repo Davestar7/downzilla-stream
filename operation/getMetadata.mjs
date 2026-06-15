@@ -95,15 +95,25 @@ async function getYouTubeMetadata(url, cookiePath) {
         const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
 
         // Try decipher first, then fallback to f.url
-        let formatUrl = null
-        try {
-            if (youtube.session.player) {
-                formatUrl = f.decipher(youtube.session.player)
-            }
-        } catch (e) {
-            // ignore
-        }
+         let formatUrl = null
+try {
+    if (youtube.session.player) {
+        const deciphered = f.decipher(youtube.session.player)
+        // Force convert to string regardless of what type it returns
+        formatUrl = deciphered?.toString() || null
+    }
+} catch (e) {
+    // ignore
+}
 
+if (!formatUrl && f.url) {
+    formatUrl = f.url?.toString() || null
+}
+
+// Final check - must be a non-empty string starting with http
+if (!formatUrl || typeof formatUrl !== 'string' || !formatUrl.startsWith('http')) {
+    return null
+}
         if (!formatUrl && f.url) {
             formatUrl = typeof f.url === 'string' ? f.url : null
         }
