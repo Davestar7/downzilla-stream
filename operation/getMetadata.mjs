@@ -84,7 +84,7 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
                 if (isYouTubeUrl(url)) {
-    const potResult = await generatePoToken(url)
+                   const potResult = await generatePoToken(url)
 
     argss = [
         '--cookies', cookie,
@@ -99,14 +99,13 @@ const metadataExtractor = async (req, res) => {
         '--no-cache-dir',
     ]
 
-    if (potResult) {
-        argss.push('--extractor-args', `youtube:player_client=web;po_token=web+${potResult.poToken};visitor_data=${potResult.visitorData}`)
-    }
+                if (potResult) {
+                   argss.push('--extractor-args', `youtube:player_client=web;po_token=web+${potResult.poToken};visitor_data=${potResult.visitorData}`)
+                }
 
-    argss.push('-j', url)
+                argss.push('-j', url)
 
-    proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
-}
+                proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
                 } else {
                     argss = [
                         '--cookies', cookie,
@@ -160,7 +159,7 @@ const metadataExtractor = async (req, res) => {
                 data += chunk.toString()
             })
 
-            proc.stderr.on("data", (chunk) => {
+              proc.stderr.on("data", (chunk) => {
                 console.error('YTDLP STDERR:', chunk.toString())
                 error += chunk.toString()
             })
