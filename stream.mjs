@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { execSync, spawn } from 'child_process';
 import fs from "fs"
 
+let bgutilStarted = false
 startBgutilServer()
 
 const app = express()
@@ -29,8 +30,6 @@ const isWindows = process.platform === "win32";
 const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
-
-let bgutilStarted = false
 
 function startBgutilServer() {
     if (bgutilStarted) return
