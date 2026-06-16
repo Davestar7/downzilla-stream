@@ -6,6 +6,8 @@ import { fileURLToPath } from "url";
 import { execSync, spawn } from 'child_process';
 import fs from "fs"
 
+startBgutilServer()
+
 const app = express()
 
 const origin = [
@@ -64,8 +66,6 @@ function startBgutilServer() {
         bgutilStarted = false
     }
 }
-
-startBgutilServer()
 
 function ensureNodeRuntime() {
     try {
