@@ -76,8 +76,8 @@ async function startBgutilServer() {
 
     try {
         try {
-          const pluginPath = execSync('pip3 show bgutil-ytdlp-pot-provider 2>/dev/null | grep Location').toString().trim()
-          console.log('bgutil pip plugin location:', pluginPath)
+            execSync('pip3 install bgutil-ytdlp-pot-provider --break-system-packages --target /root/yt-dlp-plugins/bgutil-ytdlp-pot-provider -q')
+            console.log('bgutil pip plugin location:', pluginPath)
        } catch(e) {
            console.log('bgutil pip plugin not found')
        }
@@ -85,10 +85,10 @@ async function startBgutilServer() {
         
         const binaryPath = await downloadBgutil()
 
-        const bgutil = spawn(binaryPath, ['server', '--host', '127.0.0.1', '--port', '4416'], {
-            stdio: 'pipe',
-            detached: true
-        })
+        const bgutil = spawn(binaryPath, ['server', '--host', '0.0.0.0', '--port', '4416'], {
+           stdio: 'pipe',
+           detached: true
+       })
 
         bgutil.stdout.on('data', d => console.log('bgutil:', d.toString().trim()))
         bgutil.stderr.on('data', d => console.log('bgutil err:', d.toString().trim()))
