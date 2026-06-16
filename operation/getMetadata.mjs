@@ -77,6 +77,12 @@ const metadataExtractor = async (req, res) => {
         argument.push(cookie)
         argument.push(url)
 
+        let potResult = null
+        if (type === "video" && isYouTubeUrl(url)) {
+            potResult = await generatePoToken(url)
+            console.log('PO token generated:', !!potResult?.poToken)
+        }
+
         const outPut = new Promise((resolve, reject) => {
             let proc
 
@@ -84,7 +90,6 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
                 if (isYouTubeUrl(url)) {
-                   const potResult = await generatePoTokens(url)
 
     argss = [
         '--cookies', cookie,
