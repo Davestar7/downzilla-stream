@@ -36,17 +36,11 @@ function startBgutilServer() {
     bgutilStarted = true
 
     const binaryPath = '/app/operation/bgutil-pot'
-
-    if (!fs.existsSync(binaryPath)) {
-        console.log('bgutil-pot binary not found, skipping POT server')
-        bgutilStarted = false
-        return
-    }
-
+// Start with correct args
     try {
-        const bgutil = spawn(binaryPath, ['server', '--port', '4416'], {
-            stdio: 'pipe',
-            detached: true
+        const bgutil = spawn(binaryPath, ['server', '--host', '127.0.0.1', '--port', '4416'], {
+           stdio: 'pipe',
+           detached: true
         })
 
         bgutil.stdout.on('data', d => console.log('bgutil:', d.toString().trim()))
