@@ -8,6 +8,7 @@ import fs from 'fs'
 import https from 'https'
 
 let bgutilStarted = false
+let bgutilFailCount = 0
 
 startBgutilServer()
 
