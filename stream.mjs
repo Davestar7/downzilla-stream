@@ -75,25 +75,29 @@ async function startBgutilServer() {
     bgutilStarted = true
 
     try {
-        
-        // Detect architecture and download correct binary
-        const arch = execSync('uname -m').toString().trim()
-        console.log('System arch:', arch)
+        // Install libssl3 FIRST
+        try {
+            execSync('apt-get install -y libssl3 2>/dev/null || true')
+            execSync('ldconfig 2>/dev/null || true') // update linker cache
+            console.log('libssl3 installed and ldconfig updated')
+        } catch(e) {
+            console.log('libssl install error:', e.message)
+        }
 
-        const binaryUrl = arch === 'aarch64' 
+        // Download binary AFTER libssl installed
+        const arch = execSync('uname -m').toString().trim()
+        const binaryUrl = arch === 'aarch64'
             ? 'https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-aarch64'
             : 'https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-x86_64'
 
         const binaryPath = '/app/operation/bgutil-pot'
 
-        // Always re-download to ensure correct arch
-        console.log(`Downloading bgutil-pot for ${arch}...`)
+        // Always re-download fresh
         execSync(`curl -L ${binaryUrl} -o ${binaryPath}`)
         execSync(`chmod +x ${binaryPath}`)
 
-        // Test binary
-        const test = execSync(`${binaryPath} --version 2>&1 || true`).toString().trim()
-        console.log('bgutil version:', test)
+        const version = execSync(`${binaryPath} --version 2>&1 || true`).toString().trim()
+        console.log('bgutil version:', version)
 
         const bgutil = spawn(binaryPath, ['server', '--host', '0.0.0.0', '--port', '4416'], {
             stdio: 'pipe',
@@ -107,6 +111,11 @@ async function startBgutilServer() {
         bgutil.on('close', (code) => {
             console.log('bgutil server closed with code:', code)
             bgutilStarted = false
+            bgutilFailCount++
+            if (bgutilFailCount > 3) {
+                console.log('bgutil failed too many times, giving up')
+                return
+            }
             setTimeout(startBgutilServer, 10000)
         })
 
@@ -118,22 +127,6 @@ async function startBgutilServer() {
         bgutil.unref()
         await new Promise(resolve => setTimeout(resolve, 3000))
         console.log('bgutil POT server ready on port 4416')
-
-        let bgutilFailCount = 0
-
-       bgutil.on('close', (code) => {
-         console.log('bgutil server closed with code:', code)
-         bgutilStarted = false
-         bgutilFailCount++
-    
-    // Stop retrying after 3 failures
-        if (bgutilFailCount > 3) {
-          console.log('bgutil failed too many times, giving up')
-          return
-        }
-    
-         setTimeout(startBgutilServer, 10000)
-     })
 
     } catch (e) {
         console.log('Failed to start bgutil server:', e.message)
