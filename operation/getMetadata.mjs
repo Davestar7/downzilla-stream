@@ -89,6 +89,7 @@ const metadataExtractor = async (req, res) => {
 
     argss = [
     '--cookies', cookie,
+    '--verbose',
     '--no-warnings',
     '--skip-download',
     '--no-check-certificate',
