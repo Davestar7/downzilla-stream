@@ -90,7 +90,6 @@ const metadataExtractor = async (req, res) => {
     argss = [
     '--cookies', cookie,
     '--verbose',
-    '--no-warnings',
     '--skip-download',
     '--no-check-certificate',
     '--no-playlist',
@@ -99,10 +98,11 @@ const metadataExtractor = async (req, res) => {
     '--fragment-retries', '3',
     '--ignore-errors',
     '--no-cache-dir',
+    '--plugin-dirs', '/root/.local/lib/python3.11/site-packages',
+    '--plugin-dirs', '/usr/local/lib/python3.11/site-packages',
     '-j',
     url
 ]
-
                 proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
                 } else {
                     argss = [
