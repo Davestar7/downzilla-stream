@@ -3,7 +3,7 @@ import cors from 'cors'
 import route from "./routes/routes.mjs"
 import path from "path"
 import { fileURLToPath } from "url";
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import fs from "fs"
 
 const app = express()
@@ -27,6 +27,45 @@ const isWindows = process.platform === "win32";
 const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
+
+let bgutilStarted = false
+
+function startBgutilServer() {
+    if (bgutilStarted) return
+    bgutilStarted = true
+
+    const binaryPath = '/app/operation/bgutil-pot'
+
+    if (!fs.existsSync(binaryPath)) {
+        console.log('bgutil-pot binary not found, skipping POT server')
+        bgutilStarted = false
+        return
+    }
+
+    try {
+        const bgutil = spawn(binaryPath, ['server', '--port', '4416'], {
+            stdio: 'pipe',
+            detached: true
+        })
+
+        bgutil.stdout.on('data', d => console.log('bgutil:', d.toString().trim()))
+        bgutil.stderr.on('data', d => console.log('bgutil err:', d.toString().trim()))
+
+        bgutil.on('close', (code) => {
+            console.log('bgutil server closed with code:', code)
+            bgutilStarted = false
+            setTimeout(startBgutilServer, 5000)
+        })
+
+        bgutil.unref()
+        console.log('bgutil POT server started on port 4416')
+    } catch (e) {
+        console.log('Failed to start bgutil server:', e.message)
+        bgutilStarted = false
+    }
+}
+
+startBgutilServer()
 
 function ensureNodeRuntime() {
     try {
