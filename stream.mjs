@@ -122,14 +122,6 @@ async function startBgutilServer() {
         console.log('Failed to start bgutil server:', e.message)
         bgutilStarted = false
     }
-
-    try {
-    execSync('curl -sS https://bootstrap.pypa.io/get-pip.py | python3')
-    execSync('python3 -m pip install bgutil-ytdlp-pot-provider -q')
-    console.log('bgutil pip plugin installed')
-    } catch(e) {
-    console.log('pip install failed:', e.message)
-    }
 }
 
 function ensureNodeRuntime() {
