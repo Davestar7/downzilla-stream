@@ -23,33 +23,27 @@ function getVideoId(url) {
     return url.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1]
 }
 
-async function getYouTubeMetadata(url, cookiePath) {
-    // Parse Netscape cookies to JSON array format ytdl-core accepts
-    let cookies = []
-    try {
-        const cookieFile = fs.readFileSync(cookiePath, 'utf8')
-        cookies = cookieFile
-            .split(/\r?\n/)
-            .filter(line => line.trim() && !line.startsWith('#'))
-            .map(line => {
-                const parts = line.split('\t')
-                if (parts.length >= 7) {
-                    return {
-                        name: parts[5]?.trim(),
-                        value: parts[6]?.trim(),
-                        domain: parts[0]?.trim(),
-                        path: parts[2]?.trim(),
-                        secure: parts[3]?.trim() === 'TRUE',
-                    }
-                }
-                return null
-            })
-            .filter(Boolean)
-    } catch (e) {
-        console.log('Cookie parse error:', e.message)
-    }
+// Create agent once at startup
+let ytdlAgent = null
 
-    const agent = ytdl.createAgent(cookies)
+function getYtdlAgent() {
+    if (!ytdlAgent) {
+        try {
+            const cookiesJson = process.env.COOKIES_JSON
+            if (cookiesJson) {
+                const cookies = JSON.parse(cookiesJson)
+                ytdlAgent = ytdl.createAgent(cookies)
+                console.log('ytdl agent created with', cookies.length, 'cookies')
+            }
+        } catch (e) {
+            console.log('Failed to create ytdl agent:', e.message)
+        }
+    }
+    return ytdlAgent
+}
+
+async function getYouTubeMetadata(url, cookiePath) {
+    const agent = getYtdlAgent()
     const info = await ytdl.getInfo(url, { agent })
     const details = info.videoDetails
     const formats = info.formats
@@ -83,7 +77,9 @@ async function getYouTubeMetadata(url, cookiePath) {
         http_headers: httpHeaders,
         protocol: 'https',
         language: null,
-    }))
+    })).filter(f => f.url && typeof f.url === 'string' && f.url.startsWith('http'))
+
+    console.log('Valid formats with URLs:', mappedFormats.length)
 
     return {
         id: details.videoId,
