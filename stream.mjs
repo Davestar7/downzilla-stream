@@ -155,6 +155,35 @@ async function startBgutilServer() {
 } catch(e) {
     console.log('libssl setup error:', e.message)
     }
+
+    try {
+    execSync('apt-get update -qq && apt-get install -y libssl3 openssl 2>/dev/null || true')
+    
+    const libs = execSync('find /usr/lib -name "libssl.so*" -o -name "libcrypto.so*" 2>/dev/null || true').toString().trim()
+    console.log('All libs:', libs)
+    
+    // Symlink libssl.so.3
+    if (!libs.includes('libssl.so.3')) {
+        const sslLib = execSync('find /usr/lib -name "libssl.so*" 2>/dev/null | head -1 || true').toString().trim()
+        if (sslLib) {
+            execSync(`ln -sf ${sslLib} /usr/lib/x86_64-linux-gnu/libssl.so.3 2>/dev/null || true`)
+            console.log('libssl.so.3 symlinked from:', sslLib)
+        }
+    }
+
+    // Symlink libcrypto.so.3
+    if (!libs.includes('libcrypto.so.3')) {
+        const cryptoLib = execSync('find /usr/lib -name "libcrypto.so*" 2>/dev/null | head -1 || true').toString().trim()
+        if (cryptoLib) {
+            execSync(`ln -sf ${cryptoLib} /usr/lib/x86_64-linux-gnu/libcrypto.so.3 2>/dev/null || true`)
+            console.log('libcrypto.so.3 symlinked from:', cryptoLib)
+        }
+    }
+
+      execSync('ldconfig 2>/dev/null || true')
+    } catch(e) {
+       console.log('libs setup error:', e.message)
+    }
 }
 
 function ensureNodeRuntime() {
