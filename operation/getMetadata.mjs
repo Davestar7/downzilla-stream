@@ -68,13 +68,12 @@ async function getYouTubeMetadata(url, cookiePath) {
     }
 
     const youtube = await Innertube.create({
-        cookie: cookieHeader,
-        generate_session_locally: true,
-        retrieve_player: true,
+       cookie: cookieHeader,
+       generate_session_locally: true,
+       retrieve_player: true,
     })
 
-    const info = await youtube.getBasicInfo(videoId, 'WEB')
-
+    const info = await youtube.getBasicInfo(videoId, 'TV_EMBEDDED')
     console.log('streaming_data exists:', !!info.streaming_data)
     console.log('formats count:', info.streaming_data?.adaptive_formats?.length)
 
@@ -97,23 +96,16 @@ async function getYouTubeMetadata(url, cookiePath) {
         // Try decipher first, then fallback to f.url
          let formatUrl = null
 try {
-    if (youtube.session.player) {
-        const deciphered = f.decipher(youtube.session.player)
-        // Force convert to string regardless of what type it returns
-        formatUrl = deciphered?.toString() || null
-    }
+    // Try decipher first
+    formatUrl = f.decipher(youtube.session.player)?.toString() || null
 } catch (e) {
-    // ignore
-}
-
-if (!formatUrl && f.url) {
+    // TV_EMBEDDED formats have plain URLs
     formatUrl = f.url?.toString() || null
 }
 
+if (!formatUrl || !formatUrl.startsWith('http')) return null
+
 // Final check - must be a non-empty string starting with http
-if (!formatUrl || typeof formatUrl !== 'string' || !formatUrl.startsWith('http')) {
-    return null
-}
         if (!formatUrl && f.url) {
             formatUrl = typeof f.url === 'string' ? f.url : null
         }
