@@ -4,6 +4,9 @@ import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
 import { ensureCookiesFile } from "./dependencies.mjs"
 import fs from 'fs'
+import { BG } from 'bgutils-js'
+import { Innertube } from 'youtubei.js'
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,43 +23,38 @@ function isYouTubeUrl(url) {
 // Start bgutil POT server once at startup
 let bgutilStarted = false
 
-function startBgutilServer() {
-    if (bgutilStarted) return
-    bgutilStarted = true
-
-    const buildPath = '/app/bgutil/server/build/main.js'
-    
-    if (!fs.existsSync(buildPath)) {
-        console.log('bgutil build not found, skipping POT server')
-        bgutilStarted = false
-        return
-    }
-
+async function generatePoToken(videoId) {
     try {
-        const bgutil = spawn('node', [buildPath], {
-            stdio: 'pipe',
-            detached: true
+        const innertube = await Innertube.create({ retrieve_player: false })
+        const visitorData = innertube.session.context.client.visitorData
+
+        const bgConfig = {
+            fetch: (url, options) => fetch(url, options),
+            globalObj: globalThis,
+            identifier: visitorData,
+            requestKey: 'O43z0dpjhgX20SCx4KAo',
+        }
+
+        const bgChallenge = await BG.Challenge.create(bgConfig)
+        if (!bgChallenge) throw new Error('Failed to create challenge')
+
+        const interpreterJavascript = bgChallenge.interpreterJavascript.privateDoNotAccessOrElseSafeScriptWrappedValue
+        if (interpreterJavascript) {
+            new Function(interpreterJavascript)()
+        }
+
+        const poTokenResult = await BG.PoToken.generate({
+            program: bgChallenge.program,
+            globalName: bgChallenge.globalName,
+            bgConfig,
         })
 
-        bgutil.stdout.on('data', d => console.log('bgutil:', d.toString().trim()))
-        bgutil.stderr.on('data', d => console.log('bgutil err:', d.toString().trim()))
-
-        bgutil.on('close', (code) => {
-            console.log('bgutil server closed with code:', code)
-            bgutilStarted = false
-            // Restart after 5 seconds
-            setTimeout(startBgutilServer, 5000)
-        })
-
-        bgutil.unref()
-        console.log('bgutil POT server started on port 4416')
+        return { poToken: poTokenResult.poToken, visitorData }
     } catch (e) {
-        console.log('Failed to start bgutil server:', e.message)
-        bgutilStarted = false
+        console.log('PO token generation failed:', e.message)
+        return null
     }
 }
-// Start server at module load
-startBgutilServer()
 
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
@@ -86,6 +84,8 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
                 if (isYouTubeUrl(url)) {
+    const potResult = await generatePoToken(url)
+
     argss = [
         '--cookies', cookie,
         '--no-warnings',
@@ -97,10 +97,16 @@ const metadataExtractor = async (req, res) => {
         '--fragment-retries', '3',
         '--ignore-errors',
         '--no-cache-dir',
-        '--extractor-args', 'youtube:player_client=tv_embedded,web',
-        '-j',
-        url
     ]
+
+    if (potResult) {
+        argss.push('--extractor-args', `youtube:player_client=web;po_token=web+${potResult.poToken};visitor_data=${potResult.visitorData}`)
+    }
+
+    argss.push('-j', url)
+
+    proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
+}
                 } else {
                     argss = [
                         '--cookies', cookie,
