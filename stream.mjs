@@ -118,6 +118,22 @@ async function startBgutilServer() {
         await new Promise(resolve => setTimeout(resolve, 3000))
         console.log('bgutil POT server ready on port 4416')
 
+        let bgutilFailCount = 0
+
+       bgutil.on('close', (code) => {
+         console.log('bgutil server closed with code:', code)
+         bgutilStarted = false
+         bgutilFailCount++
+    
+    // Stop retrying after 3 failures
+        if (bgutilFailCount > 3) {
+          console.log('bgutil failed too many times, giving up')
+          return
+        }
+    
+         setTimeout(startBgutilServer, 10000)
+     })
+
     } catch (e) {
         console.log('Failed to start bgutil server:', e.message)
         bgutilStarted = false
