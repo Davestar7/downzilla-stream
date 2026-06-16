@@ -86,6 +86,7 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
                 if (isYouTubeUrl(url)) {
+                  execSync(`${ytDlpPath} --verbose 2>&1 | grep -i plugin || true`).toString()
 
     argss = [
     '--cookies', cookie,
@@ -98,8 +99,6 @@ const metadataExtractor = async (req, res) => {
     '--fragment-retries', '3',
     '--ignore-errors',
     '--no-cache-dir',
-    '--plugin-dirs', '/root/.local/lib/python3.11/site-packages',
-    '--plugin-dirs', '/usr/local/lib/python3.11/site-packages',
     '-j',
     url
 ]
