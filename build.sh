@@ -16,6 +16,7 @@ fi
 apt-get update && apt-get install -y python3 python3-pip ffmpeg
 
 # Install yt-dlp
+mkdir -p /app/operation
 curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp
 chmod a+rx /app/operation/yt-dlp
 
@@ -23,11 +24,19 @@ chmod a+rx /app/operation/yt-dlp
 pip3 install bgutil-ytdlp-pot-provider --break-system-packages
 
 # Clone and build bgutil server
+rm -rf /app/bgutil
 git clone --single-branch --branch 1.3.1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /app/bgutil
 cd /app/bgutil/server
 npm ci
+npm install -g typescript
+npx tsc --version
 npx tsc
 
+# Verify build output exists
+ls -la /app/bgutil/server/build/
+echo "bgutil build complete"
+
+cd /app
 npm install
 
 echo "yt-dlp version: $(/app/operation/yt-dlp --version)"
