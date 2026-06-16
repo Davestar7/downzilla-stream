@@ -48,13 +48,6 @@ function ensureNodeRuntime() {
 ensureNodeRuntime()
 
 try {
-    console.log('bgutil build exists:', fs.existsSync('/app/bgutil/server/build/main.js'))
-    console.log('bgutil dir:', execSync('ls /app/bgutil/server/ 2>/dev/null || echo "not found"').toString().trim())
-} catch(e) {
-    console.log('bgutil check error:', e.message)
-}
-
-try {
   console.log('Updating yt-dlp...');
   const out = execSync(`${ytDlpPath} -U`, { encoding: 'utf8' });
   console.log(out)
