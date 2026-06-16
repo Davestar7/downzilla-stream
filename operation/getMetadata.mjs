@@ -24,8 +24,16 @@ function startBgutilServer() {
     if (bgutilStarted) return
     bgutilStarted = true
 
+    const buildPath = '/app/bgutil/server/build/main.js'
+    
+    if (!fs.existsSync(buildPath)) {
+        console.log('bgutil build not found, skipping POT server')
+        bgutilStarted = false
+        return
+    }
+
     try {
-        const bgutil = spawn('node', ['/app/bgutil/server/build/main.js'], {
+        const bgutil = spawn('node', [buildPath], {
             stdio: 'pipe',
             detached: true
         })
@@ -36,15 +44,17 @@ function startBgutilServer() {
         bgutil.on('close', (code) => {
             console.log('bgutil server closed with code:', code)
             bgutilStarted = false
+            // Restart after 5 seconds
+            setTimeout(startBgutilServer, 5000)
         })
 
         bgutil.unref()
         console.log('bgutil POT server started on port 4416')
     } catch (e) {
         console.log('Failed to start bgutil server:', e.message)
+        bgutilStarted = false
     }
 }
-
 // Start server at module load
 startBgutilServer()
 
