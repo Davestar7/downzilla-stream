@@ -23,7 +23,7 @@ function isYouTubeUrl(url) {
 // Start bgutil POT server once at startup
 let bgutilStarted = false
 
-async function generatePoToken(videoId) {
+async function generatePoTokens(videoId) {
     try {
         const innertube = await Innertube.create({ retrieve_player: false })
         const visitorData = innertube.session.context.client.visitorData
@@ -84,7 +84,7 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
                 if (isYouTubeUrl(url)) {
-                   const potResult = await generatePoToken(url)
+                   const potResult = await generatePoTokens(url)
 
     argss = [
         '--cookies', cookie,
