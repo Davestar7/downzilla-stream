@@ -75,8 +75,12 @@ async function startBgutilServer() {
     bgutilStarted = true
 
     try {
-        execSync('pip3 install bgutil-ytdlp-pot-provider --break-system-packages -q', { stdio: 'inherit' })
-        console.log('bgutil pip plugin installed')
+        try {
+          const pluginPath = execSync('pip3 show bgutil-ytdlp-pot-provider 2>/dev/null | grep Location').toString().trim()
+          console.log('bgutil pip plugin location:', pluginPath)
+       } catch(e) {
+           console.log('bgutil pip plugin not found')
+       }
         
         
         const binaryPath = await downloadBgutil()
