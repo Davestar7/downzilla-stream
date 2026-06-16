@@ -4,6 +4,7 @@ import route from "./routes/routes.mjs"
 import path from "path"
 import { fileURLToPath } from "url";
 import { execSync } from 'child_process';
+import fs from "fs"
 
 const app = express()
 
