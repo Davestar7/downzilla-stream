@@ -75,6 +75,7 @@ async function startBgutilServer() {
     bgutilStarted = true
 
     try {
+        
         // Detect architecture and download correct binary
         const arch = execSync('uname -m').toString().trim()
         console.log('System arch:', arch)
@@ -138,6 +139,11 @@ async function startBgutilServer() {
         console.log('Failed to start bgutil server:', e.message)
         bgutilStarted = false
     }
+
+    try {
+       execSync('apt-get install -y libssl3 2>/dev/null || true')
+       console.log('libssl3 installed')
+   } catch(e) {}
 }
 
 function ensureNodeRuntime() {
