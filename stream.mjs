@@ -46,12 +46,17 @@ function ensureNodeRuntime() {
 
 ensureNodeRuntime()
 
-console.log('yt-dlp location:', execSync('which yt-dlp 2>/dev/null || find / -name yt-dlp 2>/dev/null | head -5').toString().trim())
+try {
+    console.log('bgutil build exists:', fs.existsSync('/app/bgutil/server/build/main.js'))
+    console.log('bgutil dir:', execSync('ls /app/bgutil/server/ 2>/dev/null || echo "not found"').toString().trim())
+} catch(e) {
+    console.log('bgutil check error:', e.message)
+}
 
 try {
   console.log('Updating yt-dlp...');
   const out = execSync(`${ytDlpPath} -U`, { encoding: 'utf8' });
-  console.log(out);
+  console.log(out)
 } catch (err) {
   console.error('yt-dlp self-update failed:', err.message);
 }
