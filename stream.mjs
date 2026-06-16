@@ -75,6 +75,10 @@ async function startBgutilServer() {
     bgutilStarted = true
 
     try {
+        execSync('pip3 install bgutil-ytdlp-pot-provider --break-system-packages -q', { stdio: 'inherit' })
+        console.log('bgutil pip plugin installed')
+        
+        
         const binaryPath = await downloadBgutil()
 
         const bgutil = spawn(binaryPath, ['server', '--host', '127.0.0.1', '--port', '4416'], {
