@@ -2,6 +2,8 @@
 
 echo "Starting build..."
 
+echo "Build timestamp: $(date)"
+
 NODE_PATH=$(which node)
 if [ ! -f /usr/local/bin/node ]; then ln -s $NODE_PATH /usr/local/bin/node; fi
 if [ ! -f /usr/bin/node ]; then ln -s $NODE_PATH /usr/bin/node; fi
