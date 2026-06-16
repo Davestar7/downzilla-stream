@@ -23,15 +23,6 @@ function getVideoId(url) {
     return url.match(/(?:v=|youtu\.be\/)([^&?/]+)/)?.[1]
 }
 
-// Set up JS evaluator ONCE at module level before any Innertube.create() calls
-Platform.shim.eval = async (data, env) => {
-    const properties = []
-    if (env.n) properties.push(`n: exportedVars.nFunction("${env.n}")`)
-    if (env.sig) properties.push(`sig: exportedVars.sigFunction("${env.sig}")`)
-    const code = `${data.output}\nreturn { ${properties.join(', ')} }`
-    return new Function(code)()
-}
-
 async function getYouTubeMetadata(url, cookiePath) {
     const videoId = getVideoId(url)
     if (!videoId) throw new Error('Invalid YouTube URL')
@@ -61,58 +52,39 @@ async function getYouTubeMetadata(url, cookiePath) {
             })
             .filter(Boolean)
             .join('; ')
-        console.log('Cookie length:', cookieHeader.length)
-        console.log('Has SID:', cookieHeader.includes('SID='))
     } catch (e) {
         console.log('Cookie parse error:', e.message)
     }
 
     const youtube = await Innertube.create({
-       cookie: cookieHeader,
-       generate_session_locally: true,
-       retrieve_player: true,
+        cookie: cookieHeader,
+        generate_session_locally: true,
+        retrieve_player: false, // don't retrieve player - no deciphering needed
     })
 
+    // TV_EMBEDDED returns plain URLs without needing deciphering
     const info = await youtube.getBasicInfo(videoId, 'TV_EMBEDDED')
-    console.log('streaming_data exists:', !!info.streaming_data)
-    console.log('formats count:', info.streaming_data?.adaptive_formats?.length)
 
     if (!info.streaming_data) {
-        throw new Error('No streaming data - cookies may be expired')
+        throw new Error('No streaming data')
     }
 
+    const basic = info.basic_info
     const allFormats = [
         ...(info.streaming_data?.formats || []),
         ...(info.streaming_data?.adaptive_formats || [])
     ]
 
     const formats = allFormats.map(f => {
+        // TV_EMBEDDED returns plain url field directly
+        const formatUrl = f.url?.toString() || null
+        if (!formatUrl || !formatUrl.startsWith('http')) return null
+
         const isVideo = f.has_video
         const isAudio = f.has_audio
         const mimeType = f.mime_type || ''
         const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
         const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
-
-        // Try decipher first, then fallback to f.url
-         let formatUrl = null
-try {
-    // Try decipher first
-    formatUrl = f.decipher(youtube.session.player)?.toString() || null
-} catch (e) {
-    // TV_EMBEDDED formats have plain URLs
-    formatUrl = f.url?.toString() || null
-}
-
-if (!formatUrl || !formatUrl.startsWith('http')) return null
-
-// Final check - must be a non-empty string starting with http
-        if (!formatUrl && f.url) {
-            formatUrl = typeof f.url === 'string' ? f.url : null
-        }
-
-        console.log(`format itag: ${f.itag} hasUrl: ${!!formatUrl}`)
-
-        if (!formatUrl) return null
 
         return {
             format_id: String(f.itag),
@@ -140,7 +112,6 @@ if (!formatUrl || !formatUrl.startsWith('http')) return null
 
     console.log('Valid formats with URLs:', formats.length)
 
-    const basic = info.basic_info
     const thumbnails = basic.thumbnail || []
 
     return {
