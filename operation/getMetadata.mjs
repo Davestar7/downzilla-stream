@@ -21,6 +21,7 @@ function isYouTubeUrl(url) {
 }
 
 // Start bgutil POT server once at startup
+/*
 let bgutilStarted = false
 
 async function generatePoToken(videoId) {
@@ -55,6 +56,7 @@ async function generatePoToken(videoId) {
         return null
     }
 }
+*/
 
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
@@ -77,12 +79,6 @@ const metadataExtractor = async (req, res) => {
         argument.push(cookie)
         argument.push(url)
 
-        let potResult = null
-        if (type === "video" && isYouTubeUrl(url)) {
-            potResult = await generatePoToken(url)
-            console.log('PO token generated:', !!potResult?.poToken)
-        }
-
         const outPut = new Promise((resolve, reject) => {
             let proc
 
@@ -92,23 +88,19 @@ const metadataExtractor = async (req, res) => {
                 if (isYouTubeUrl(url)) {
 
     argss = [
-        '--cookies', cookie,
-        '--no-warnings',
-        '--skip-download',
-        '--no-check-certificate',
-        '--no-playlist',
-        '--force-ipv4',
-        '--retries', '3',
-        '--fragment-retries', '3',
-        '--ignore-errors',
-        '--no-cache-dir',
-    ]
-
-                if (potResult) {
-                   argss.push('--extractor-args', `youtube:player_client=web;po_token=web+${potResult.poToken};visitor_data=${potResult.visitorData}`)
-                }
-
-                argss.push('-j', url)
+    '--cookies', cookie,
+    '--no-warnings',
+    '--skip-download',
+    '--no-check-certificate',
+    '--no-playlist',
+    '--force-ipv4',
+    '--retries', '3',
+    '--fragment-retries', '3',
+    '--ignore-errors',
+    '--no-cache-dir',
+    '-j',
+    url
+]
 
                 proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
                 } else {
