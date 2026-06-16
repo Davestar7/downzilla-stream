@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
 import { ensureCookiesFile } from "./dependencies.mjs"
-import { Innertube, UniversalCache, Platform } from 'youtubei.js'
+import ytdl from '@distube/ytdl-core'
 //import { Innertube } from 'youtubei.js'
 import fs from 'fs'
 
@@ -24,8 +24,35 @@ function getVideoId(url) {
 }
 
 async function getYouTubeMetadata(url, cookiePath) {
-    const videoId = getVideoId(url)
-    if (!videoId) throw new Error('Invalid YouTube URL')
+    // Parse Netscape cookies to JSON array format ytdl-core accepts
+    let cookies = []
+    try {
+        const cookieFile = fs.readFileSync(cookiePath, 'utf8')
+        cookies = cookieFile
+            .split(/\r?\n/)
+            .filter(line => line.trim() && !line.startsWith('#'))
+            .map(line => {
+                const parts = line.split('\t')
+                if (parts.length >= 7) {
+                    return {
+                        name: parts[5]?.trim(),
+                        value: parts[6]?.trim(),
+                        domain: parts[0]?.trim(),
+                        path: parts[2]?.trim(),
+                        secure: parts[3]?.trim() === 'TRUE',
+                    }
+                }
+                return null
+            })
+            .filter(Boolean)
+    } catch (e) {
+        console.log('Cookie parse error:', e.message)
+    }
+
+    const agent = ytdl.createAgent(cookies)
+    const info = await ytdl.getInfo(url, { agent })
+    const details = info.videoDetails
+    const formats = info.formats
 
     const httpHeaders = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -35,108 +62,52 @@ async function getYouTubeMetadata(url, cookiePath) {
         'Referer': 'https://www.youtube.com/',
     }
 
-    let cookieHeader = ''
-    try {
-        const cookieFile = fs.readFileSync(cookiePath, 'utf8')
-        cookieHeader = cookieFile
-            .split(/\r?\n/)
-            .filter(line => line.trim() && !line.startsWith('#'))
-            .map(line => {
-                const parts = line.split('\t')
-                if (parts.length >= 7) {
-                    const name = parts[5]?.trim()
-                    const value = parts[6]?.trim()
-                    if (name && value) return `${name}=${value}`
-                }
-                return null
-            })
-            .filter(Boolean)
-            .join('; ')
-    } catch (e) {
-        console.log('Cookie parse error:', e.message)
-    }
-
-    const youtube = await Innertube.create({
-        cookie: cookieHeader,
-        generate_session_locally: true,
-        retrieve_player: false, // don't retrieve player - no deciphering needed
-    })
-
-    // TV_EMBEDDED returns plain URLs without needing deciphering
-    const info = await youtube.getBasicInfo(videoId, 'TV_EMBEDDED')
-
-    if (!info.streaming_data) {
-        throw new Error('No streaming data')
-    }
-
-    const basic = info.basic_info
-    const allFormats = [
-        ...(info.streaming_data?.formats || []),
-        ...(info.streaming_data?.adaptive_formats || [])
-    ]
-
-    const formats = allFormats.map(f => {
-        // TV_EMBEDDED returns plain url field directly
-        const formatUrl = f.url?.toString() || null
-        if (!formatUrl || !formatUrl.startsWith('http')) return null
-
-        const isVideo = f.has_video
-        const isAudio = f.has_audio
-        const mimeType = f.mime_type || ''
-        const ext = mimeType.split('/')[1]?.split(';')[0] || 'mp4'
-        const codec = mimeType.match(/codecs="([^"]+)"/)?.[1] || ''
-
-        return {
-            format_id: String(f.itag),
-            url: formatUrl,
-            ext,
-            width: f.width || null,
-            height: f.height || null,
-            fps: f.fps || null,
-            filesize: f.content_length ? Number(f.content_length) : null,
-            tbr: f.bitrate ? f.bitrate / 1000 : null,
-            abr: isAudio ? f.bitrate / 1000 : null,
-            vbr: isVideo && !isAudio ? f.bitrate / 1000 : null,
-            asr: f.audio_sample_rate ? Number(f.audio_sample_rate) : null,
-            audio_channels: f.audio_channels || null,
-            vcodec: isVideo ? codec.split(',')[0]?.trim() : 'none',
-            acodec: isAudio ? codec.split(',').pop()?.trim() : 'none',
-            resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
-            quality_label: f.quality_label || null,
-            format_note: f.quality_label || (isAudio && !isVideo ? 'audio only' : null),
-            http_headers: httpHeaders,
-            protocol: 'https',
-            language: f.audio_track?.id?.split('.')[0] || null,
-        }
-    }).filter(Boolean)
-
-    console.log('Valid formats with URLs:', formats.length)
-
-    const thumbnails = basic.thumbnail || []
+    const mappedFormats = formats.map(f => ({
+        format_id: String(f.itag),
+        url: f.url,
+        ext: f.container || 'mp4',
+        width: f.width || null,
+        height: f.height || null,
+        fps: f.fps || null,
+        filesize: f.contentLength ? Number(f.contentLength) : null,
+        tbr: f.bitrate ? f.bitrate / 1000 : null,
+        abr: f.audioBitrate || null,
+        vbr: f.bitrate && f.hasVideo ? f.bitrate / 1000 : null,
+        asr: f.audioSampleRate ? Number(f.audioSampleRate) : null,
+        audio_channels: f.audioChannels || null,
+        vcodec: f.hasVideo ? (f.videoCodec || 'none') : 'none',
+        acodec: f.hasAudio ? (f.audioCodec || 'none') : 'none',
+        resolution: f.height ? `${f.width}x${f.height}` : 'audio only',
+        quality_label: f.qualityLabel || null,
+        format_note: f.qualityLabel || (f.hasAudio && !f.hasVideo ? 'audio only' : null),
+        http_headers: httpHeaders,
+        protocol: 'https',
+        language: null,
+    }))
 
     return {
-        id: videoId,
-        title: basic.title || '',
-        description: basic.short_description || '',
-        duration: basic.duration || null,
-        view_count: basic.view_count || null,
-        like_count: basic.like_count || null,
-        channel: basic.author || null,
-        channel_id: basic.channel_id || null,
-        uploader: basic.author || null,
-        uploader_id: basic.channel_id || null,
-        upload_date: null,
+        id: details.videoId,
+        title: details.title,
+        description: details.description || '',
+        duration: Number(details.lengthSeconds) || null,
+        view_count: Number(details.viewCount) || null,
+        like_count: null,
+        channel: details.author?.name || null,
+        channel_id: details.channelId || null,
+        uploader: details.author?.name || null,
+        uploader_id: details.channelId || null,
+        upload_date: details.publishDate || null,
         webpage_url: url,
         original_url: url,
         webpage_url_basename: 'watch',
         webpage_url_domain: 'youtube.com',
         extractor: 'youtube',
         extractor_key: 'Youtube',
-        thumbnail: thumbnails[thumbnails.length - 1]?.url || null,
-        thumbnails: thumbnails.map(t => ({ url: t.url, width: t.width, height: t.height })),
-        formats,
+        thumbnail: details.thumbnails?.[details.thumbnails.length - 1]?.url || null,
+        thumbnails: details.thumbnails || [],
+        formats: mappedFormats,
         http_headers: httpHeaders,
-        requested_formats: formats.filter(f => f.vcodec !== 'none' && f.acodec !== 'none'),
+        requested_formats: mappedFormats.filter(f => f.vcodec !== 'none' && f.acodec !== 'none'),
     }
 }
 
