@@ -138,6 +138,23 @@ async function startBgutilServer() {
        execSync('apt-get install -y libssl3 2>/dev/null || true')
        console.log('libssl3 installed')
    } catch(e) {}
+
+    try {
+    execSync('apt-get update -qq && apt-get install -y libssl3 openssl 2>/dev/null || true')
+    // Find whatever libssl is available and symlink it
+    const libs = execSync('find / -name "libssl.so*" 2>/dev/null || true').toString().trim()
+    console.log('All libssl files:', libs)
+    
+    // Create symlink if libssl.so.1 or libssl.so.1.1 exists but not libssl.so.3
+    if (!libs.includes('libssl.so.3') && libs.includes('libssl.so')) {
+        const existingLib = libs.split('\n')[0]
+        execSync(`ln -sf ${existingLib} /usr/lib/x86_64-linux-gnu/libssl.so.3 2>/dev/null || true`)
+        execSync(`ldconfig 2>/dev/null || true`)
+        console.log('Created libssl.so.3 symlink from:', existingLib)
+    }
+} catch(e) {
+    console.log('libssl setup error:', e.message)
+    }
 }
 
 function ensureNodeRuntime() {
