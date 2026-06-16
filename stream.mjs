@@ -75,25 +75,25 @@ async function startBgutilServer() {
     bgutilStarted = true
 
     try {
-        // Install pip plugin using python3 -m pip
-        try {
-            execSync('python3 -m ensurepip --upgrade 2>/dev/null || apt-get install -y python3-pip')
-            execSync('python3 -m pip install bgutil-ytdlp-pot-provider --break-system-packages -q')
-            console.log('bgutil pip plugin installed')
-        } catch (e) {
-            console.log('bgutil pip plugin install failed:', e.message)
-        }
+        // Detect architecture and download correct binary
+        const arch = execSync('uname -m').toString().trim()
+        console.log('System arch:', arch)
 
-        const binaryPath = await downloadBgutil()
+        const binaryUrl = arch === 'aarch64' 
+            ? 'https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-aarch64'
+            : 'https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-x86_64'
 
-        // Test binary works
-        try {
-          const test = execSync(`${binaryPath} --help 2>&1 || true`).toString().trim()
-          console.log('bgutil help:', test.substring(0, 200))
-        } catch(e) {
-           console.log('bgutil test error:', e.message)
-        }
-        
+        const binaryPath = '/app/operation/bgutil-pot'
+
+        // Always re-download to ensure correct arch
+        console.log(`Downloading bgutil-pot for ${arch}...`)
+        execSync(`curl -L ${binaryUrl} -o ${binaryPath}`)
+        execSync(`chmod +x ${binaryPath}`)
+
+        // Test binary
+        const test = execSync(`${binaryPath} --version 2>&1 || true`).toString().trim()
+        console.log('bgutil version:', test)
+
         const bgutil = spawn(binaryPath, ['server', '--host', '0.0.0.0', '--port', '4416'], {
             stdio: 'pipe',
             detached: true,
@@ -118,16 +118,17 @@ async function startBgutilServer() {
         await new Promise(resolve => setTimeout(resolve, 3000))
         console.log('bgutil POT server ready on port 4416')
 
-        try {
-    const arch = execSync('uname -m').toString().trim()
-    const file = execSync(`file ${binaryPath} 2>&1`).toString().trim()
-    console.log('System arch:', arch)
-    console.log('Binary type:', file)
-} catch(e) {} 
-
     } catch (e) {
         console.log('Failed to start bgutil server:', e.message)
         bgutilStarted = false
+    }
+
+    try {
+    execSync('curl -sS https://bootstrap.pypa.io/get-pip.py | python3')
+    execSync('python3 -m pip install bgutil-ytdlp-pot-provider -q')
+    console.log('bgutil pip plugin installed')
+    } catch(e) {
+    console.log('pip install failed:', e.message)
     }
 }
 
