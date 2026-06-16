@@ -23,7 +23,7 @@ function isYouTubeUrl(url) {
 // Start bgutil POT server once at startup
 let bgutilStarted = false
 
-async function generatePoTokens(videoId) {
+async function generatePoToken(videoId) {
     try {
         const innertube = await Innertube.create({ retrieve_player: false })
         const visitorData = innertube.session.context.client.visitorData
