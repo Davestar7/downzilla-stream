@@ -75,20 +75,29 @@ async function startBgutilServer() {
     bgutilStarted = true
 
     try {
+        // Install pip plugin using python3 -m pip
         try {
-            execSync('pip3 install bgutil-ytdlp-pot-provider --break-system-packages --target /root/yt-dlp-plugins/bgutil-ytdlp-pot-provider -q')
-            console.log('bgutil pip plugin location:', pluginPath)
-       } catch(e) {
-           console.log('bgutil pip plugin not found')
-       }
-        
-        
+            execSync('python3 -m pip install bgutil-ytdlp-pot-provider --break-system-packages -q')
+            console.log('bgutil pip plugin installed')
+        } catch (e) {
+            console.log('bgutil pip plugin install failed:', e.message)
+        }
+
         const binaryPath = await downloadBgutil()
 
+        // Test binary works
+        try {
+            const version = execSync(`${binaryPath} --version 2>&1`).toString().trim()
+            console.log('bgutil-pot version:', version)
+        } catch (e) {
+            console.log('bgutil-pot test failed:', e.message)
+        }
+
         const bgutil = spawn(binaryPath, ['server', '--host', '0.0.0.0', '--port', '4416'], {
-           stdio: 'pipe',
-           detached: true
-       })
+            stdio: 'pipe',
+            detached: true,
+            env: { ...process.env, RUST_LOG: 'info' }
+        })
 
         bgutil.stdout.on('data', d => console.log('bgutil:', d.toString().trim()))
         bgutil.stderr.on('data', d => console.log('bgutil err:', d.toString().trim()))
@@ -96,7 +105,7 @@ async function startBgutilServer() {
         bgutil.on('close', (code) => {
             console.log('bgutil server closed with code:', code)
             bgutilStarted = false
-            setTimeout(startBgutilServer, 5000)
+            setTimeout(startBgutilServer, 10000)
         })
 
         bgutil.on('error', (err) => {
@@ -105,7 +114,9 @@ async function startBgutilServer() {
         })
 
         bgutil.unref()
-        console.log('bgutil POT server started on port 4416')
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        console.log('bgutil POT server ready on port 4416')
+
     } catch (e) {
         console.log('Failed to start bgutil server:', e.message)
         bgutilStarted = false
