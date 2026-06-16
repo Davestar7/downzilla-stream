@@ -77,6 +77,7 @@ async function startBgutilServer() {
     try {
         // Install pip plugin using python3 -m pip
         try {
+            execSync('python3 -m ensurepip --upgrade 2>/dev/null || apt-get install -y python3-pip')
             execSync('python3 -m pip install bgutil-ytdlp-pot-provider --break-system-packages -q')
             console.log('bgutil pip plugin installed')
         } catch (e) {
@@ -87,12 +88,12 @@ async function startBgutilServer() {
 
         // Test binary works
         try {
-            const version = execSync(`${binaryPath} --version 2>&1`).toString().trim()
-            console.log('bgutil-pot version:', version)
-        } catch (e) {
-            console.log('bgutil-pot test failed:', e.message)
+          const test = execSync(`${binaryPath} --help 2>&1 || true`).toString().trim()
+          console.log('bgutil help:', test.substring(0, 200))
+        } catch(e) {
+           console.log('bgutil test error:', e.message)
         }
-
+        
         const bgutil = spawn(binaryPath, ['server', '--host', '0.0.0.0', '--port', '4416'], {
             stdio: 'pipe',
             detached: true,
@@ -116,6 +117,13 @@ async function startBgutilServer() {
         bgutil.unref()
         await new Promise(resolve => setTimeout(resolve, 3000))
         console.log('bgutil POT server ready on port 4416')
+
+        try {
+    const arch = execSync('uname -m').toString().trim()
+    const file = execSync(`file ${binaryPath} 2>&1`).toString().trim()
+    console.log('System arch:', arch)
+    console.log('Binary type:', file)
+} catch(e) {} 
 
     } catch (e) {
         console.log('Failed to start bgutil server:', e.message)
