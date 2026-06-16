@@ -86,21 +86,21 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
                 if (isYouTubeUrl(url)) {
-                    // Use bgutil POT provider for YouTube
-                    argss = [
-                        '--cookies', cookie,
-                        '--no-warnings',
-                        '--skip-download',
-                        '--no-check-certificate',
-                        '--no-playlist',
-                        '--force-ipv4',
-                        '--retries', '3',
-                        '--fragment-retries', '3',
-                        '--ignore-errors',
-                        '--no-cache-dir',
-                        '-j',
-                        url
-                    ]
+    argss = [
+        '--cookies', cookie,
+        '--no-warnings',
+        '--skip-download',
+        '--no-check-certificate',
+        '--no-playlist',
+        '--force-ipv4',
+        '--retries', '3',
+        '--fragment-retries', '3',
+        '--ignore-errors',
+        '--no-cache-dir',
+        '--extractor-args', 'youtube:player_client=tv_embedded,web',
+        '-j',
+        url
+    ]
                 } else {
                     argss = [
                         '--cookies', cookie,
