@@ -33,8 +33,6 @@ const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
 
-let bgutilStarted = false
-
 async function downloadBgutil() {
     const binaryPath = '/app/operation/bgutil-pot'
     
