@@ -4,9 +4,11 @@ import route from "./routes/routes.mjs"
 import path from "path"
 import { fileURLToPath } from "url";
 import { execSync, spawn } from 'child_process';
-import fs from "fs"
+import fs from 'fs'
+import https from 'https'
 
 let bgutilStarted = false
+
 startBgutilServer()
 
 const app = express()
@@ -31,16 +33,55 @@ const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
 
-function startBgutilServer() {
+let bgutilStarted = false
+
+async function downloadBgutil() {
+    const binaryPath = '/app/operation/bgutil-pot'
+    
+    if (fs.existsSync(binaryPath)) return binaryPath
+
+    console.log('Downloading bgutil-pot binary...')
+    
+    return new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(binaryPath)
+        https.get('https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-x86_64', (res) => {
+            // Follow redirects
+            if (res.statusCode === 302 || res.statusCode === 301) {
+                https.get(res.headers.location, (res2) => {
+                    res2.pipe(file)
+                    file.on('finish', () => {
+                        file.close()
+                        execSync(`chmod +x ${binaryPath}`)
+                        console.log('bgutil-pot downloaded successfully')
+                        resolve(binaryPath)
+                    })
+                }).on('error', reject)
+            } else {
+                res.pipe(file)
+                file.on('finish', () => {
+                    file.close()
+                    execSync(`chmod +x ${binaryPath}`)
+                    console.log('bgutil-pot downloaded successfully')
+                    resolve(binaryPath)
+                })
+            }
+        }).on('error', (err) => {
+            fs.unlink(binaryPath, () => {})
+            reject(err)
+        })
+    })
+}
+
+async function startBgutilServer() {
     if (bgutilStarted) return
     bgutilStarted = true
 
-    const binaryPath = '/app/operation/bgutil-pot'
-// Start with correct args
     try {
+        const binaryPath = await downloadBgutil()
+
         const bgutil = spawn(binaryPath, ['server', '--host', '127.0.0.1', '--port', '4416'], {
-           stdio: 'pipe',
-           detached: true
+            stdio: 'pipe',
+            detached: true
         })
 
         bgutil.stdout.on('data', d => console.log('bgutil:', d.toString().trim()))
@@ -50,6 +91,11 @@ function startBgutilServer() {
             console.log('bgutil server closed with code:', code)
             bgutilStarted = false
             setTimeout(startBgutilServer, 5000)
+        })
+
+        bgutil.on('error', (err) => {
+            console.log('bgutil spawn error:', err.message)
+            bgutilStarted = false
         })
 
         bgutil.unref()
