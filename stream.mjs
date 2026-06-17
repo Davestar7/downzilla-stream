@@ -6,12 +6,12 @@ import { fileURLToPath } from "url";
 import { execSync, spawn } from 'child_process';
 import fs from 'fs'
 import https from 'https'
-
+/*
 let bgutilStarted = false
 let bgutilFailCount = 0
 
 startBgutilServer()
-
+*/
 const app = express()
 
 const origin = [
