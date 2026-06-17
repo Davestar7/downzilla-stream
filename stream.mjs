@@ -70,7 +70,7 @@ async function downloadBgutil() {
         })
     })
 }
-
+/*
 async function startBgutilServer() {
     if (bgutilStarted) return
     bgutilStarted = true
@@ -185,6 +185,7 @@ async function startBgutilServer() {
        console.log('libs setup error:', e.message)
     }
 }
+*/
 
 function ensureNodeRuntime() {
     try {
