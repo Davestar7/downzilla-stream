@@ -88,10 +88,8 @@ async function startBgutilServer() {
         // Download binary AFTER libssl installed
         const arch = execSync('uname -m').toString().trim()
         const binaryUrl = arch === 'aarch64'
-            ? 'https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-aarch64'
-            : 'https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-x86_64'
-
-        const binaryPath = '/app/operation/bgutil-pot'
+    ? 'https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-aarch64-musl'
+    : 'https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-x86_64-musl'        const binaryPath = '/app/operation/bgutil-pot'
 
         // Always re-download fresh
         execSync(`curl -L ${binaryUrl} -o ${binaryPath}`)
