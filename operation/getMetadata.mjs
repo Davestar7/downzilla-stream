@@ -86,7 +86,6 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
                 if (isYouTubeUrl(url)) {
-                  execSync(`${ytDlpPath} --verbose 2>&1 | grep -i plugin || true`).toString()
 
     argss = [
         '--cookies', cookie,
