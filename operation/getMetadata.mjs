@@ -89,19 +89,19 @@ const metadataExtractor = async (req, res) => {
                   execSync(`${ytDlpPath} --verbose 2>&1 | grep -i plugin || true`).toString()
 
     argss = [
-    '--cookies', cookie,
-    '--verbose',
-    '--skip-download',
-    '--no-check-certificate',
-    '--no-playlist',
-    '--force-ipv4',
-    '--retries', '3',
-    '--fragment-retries', '3',
-    '--ignore-errors',
-    '--no-cache-dir',
-    '-j',
-    url
-]
+        '--cookies', cookie,
+        '--no-warnings',
+        '--skip-download',
+        '--no-check-certificate',
+        '--no-playlist',
+        '--force-ipv4',
+        '--retries', '3',
+        '--fragment-retries', '3',
+        '--ignore-errors',
+        '--no-cache-dir',
+        '-j',
+        url
+    ]
                 proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
                 } else {
                     argss = [
