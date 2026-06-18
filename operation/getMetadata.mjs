@@ -85,42 +85,41 @@ const metadataExtractor = async (req, res) => {
             if (type === "video") {
                 let argss
 
-                if (isYouTubeUrl(url)) {
+    if (isYouTubeUrl(url)) {
+        argss = [
+            '--cookies', cookie,
+            '--no-warnings',
+            '--skip-download',
+            '--no-check-certificate',
+            '--no-playlist',
+            '--force-ipv4',
+            '--retries', '3',
+            '--fragment-retries', '3',
+            '--ignore-errors',
+            '--no-cache-dir',
+            '-j',
+            url
+        ]
+    } else {
+        argss = [
+            '--cookies', cookie,
+            '--no-warnings',
+            '--skip-download',
+            '--no-check-certificate',
+            '--no-playlist',
+            '--force-ipv4',
+            '--retries', '3',
+            '--fragment-retries', '3',
+            '--ignore-errors',
+            '--no-cache-dir',
+            '-j',
+            url
+        ]
+    }
 
-    argss = [
-        '--cookies', cookie,
-        '--no-warnings',
-        '--skip-download',
-        '--no-check-certificate',
-        '--no-playlist',
-        '--force-ipv4',
-        '--retries', '3',
-        '--fragment-retries', '3',
-        '--ignore-errors',
-        '--no-cache-dir',
-        '-j',
-        url
-    ]
-                proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
-                } else {
-                    argss = [
-                        '--cookies', cookie,
-                        '--no-warnings',
-                        '--skip-download',
-                        '--no-check-certificate',
-                        '--no-playlist',
-                        '--force-ipv4',
-                        '--retries', '3',
-                        '--fragment-retries', '3',
-                        '--ignore-errors',
-                        '--no-cache-dir',
-                        '-j',
-                        url
-                    ]
-                }
-
-                proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
-
+    // ✅ Only called once
+    proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
+            }
             } else if (type === "playlist") {
                 proc = spawn(ytDlpPath, argument, { stdio: ["ignore", "pipe", "pipe"] })
             } else if (type === "audio") {
