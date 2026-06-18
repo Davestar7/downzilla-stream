@@ -118,8 +118,8 @@ const metadataExtractor = async (req, res) => {
     }
 
     // ✅ Only called once
-    proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
-            }
+              proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"] })
+            
             } else if (type === "playlist") {
                 proc = spawn(ytDlpPath, argument, { stdio: ["ignore", "pipe", "pipe"] })
             } else if (type === "audio") {
