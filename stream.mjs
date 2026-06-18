@@ -34,6 +34,25 @@ const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
 
+function installYtdlpPlugin() {
+    try {
+        // Create yt-dlp plugin directory
+        execSync('mkdir -p /root/yt-dlp-plugins')
+        
+        // Download plugin zip directly to correct location
+        execSync('curl -L https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-ytdlp-pot-provider-rs.zip -o /tmp/bgutil-plugin.zip')
+        execSync('cd /tmp && unzip -o bgutil-plugin.zip -d /root/yt-dlp-plugins/')
+        
+        // Verify
+        const files = execSync('ls /root/yt-dlp-plugins/').toString().trim()
+        console.log('yt-dlp plugins installed:', files)
+    } catch(e) {
+        console.log('Plugin install failed:', e.message)
+    }
+}
+
+installYtdlpPlugin()
+
 async function downloadBgutil() {
     const binaryPath = '/app/operation/bgutil-pot'
     
