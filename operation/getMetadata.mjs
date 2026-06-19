@@ -96,6 +96,7 @@ const metadataExtractor = async (req, res) => {
        '--force-ipv4',
        '--retries', '3',
        '--fragment-retries', '3',
+        '--extractor-args', 'youtube:player_client=android,web_safari',
        '--ignore-errors',
        '--no-cache-dir',
         '-j',
@@ -120,7 +121,7 @@ const metadataExtractor = async (req, res) => {
     }
 
     // ✅ Only called once
-              proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"], cwd: '/app/operation' })
+              proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"], cwd: '/app/operation', env: { ...process.env, PATH: `/usr/local/bin:/usr/bin:${process.env.PATH}` } })
             
             } else if (type === "playlist") {
                 proc = spawn(ytDlpPath, argument, { stdio: ["ignore", "pipe", "pipe"] })
