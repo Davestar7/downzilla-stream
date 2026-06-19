@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { execSync, spawn } from 'child_process';
 import fs from 'fs'
 import https from 'https'
+import AdmZip from 'adm-zip'
 /*
 let bgutilStarted = false
 let bgutilFailCount = 0
@@ -37,10 +38,13 @@ const ytDlpPath = isWindows
 function installYtdlpPlugin() {
     try {
         const pluginDir = '/app/operation/yt-dlp-plugins'
-        execSync(`mkdir -p ${pluginDir}`)
+        fs.mkdirSync(pluginDir, { recursive: true })
 
-        execSync('curl -L https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-ytdlp-pot-provider-rs.zip -o /tmp/bgutil-plugin.zip')
-        execSync(`cd /tmp && unzip -o bgutil-plugin.zip -d ${pluginDir}/`)
+        const zipPath = '/tmp/bgutil-plugin.zip'
+        execSync(`curl -L https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-ytdlp-pot-provider-rs.zip -o ${zipPath}`)
+
+        const zip = new AdmZip(zipPath)
+        zip.extractAllTo(pluginDir, true)
 
         const files = execSync(`find ${pluginDir} -type f`).toString().trim()
         console.log('yt-dlp plugin files:', files)
