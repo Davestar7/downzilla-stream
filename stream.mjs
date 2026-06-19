@@ -7,12 +7,12 @@ import { execSync, spawn } from 'child_process';
 import fs from 'fs'
 import https from 'https'
 import AdmZip from 'adm-zip'
-/*
+
 let bgutilStarted = false
 let bgutilFailCount = 0
 
 startBgutilServer()
-*/
+
 const app = express()
 
 const origin = [
@@ -91,7 +91,7 @@ async function downloadBgutil() {
         })
     })
 }
-/*
+
 async function startBgutilServer() {
     if (bgutilStarted) return
     bgutilStarted = true
@@ -206,7 +206,7 @@ async function startBgutilServer() {
        console.log('libs setup error:', e.message)
     }
 }
-*/
+
 
 function ensureNodeRuntime() {
     try {
