@@ -86,7 +86,7 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
     if (isYouTubeUrl(url)) {
-        const args = [
+        const argss = [
   '--cookies', cookie,
   '--verbose',
   '--skip-download',
