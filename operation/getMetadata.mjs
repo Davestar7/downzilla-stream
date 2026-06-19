@@ -101,7 +101,7 @@ const metadataExtractor = async (req, res) => {
         '-j',
         url
 ]
-      console.log(argss)
+      
     } else {
         argss = [
             '--cookies', cookie,
