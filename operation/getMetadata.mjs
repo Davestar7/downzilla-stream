@@ -98,7 +98,7 @@ const metadataExtractor = async (req, res) => {
   '--ignore-errors',
   '--no-cache-dir',
   '-j',
-  url
+   url
 ]
     } else {
         argss = [
