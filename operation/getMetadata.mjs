@@ -74,10 +74,11 @@ const metadataExtractor = async (req, res) => {
         const cookie = ensureCookiesFile()
 
         let argument = [...arg]
-
+        /*
         argument.push("--cookies")
         argument.push(cookie)
         argument.push(url)
+        */
 
         const outPut = new Promise((resolve, reject) => {
             let proc
