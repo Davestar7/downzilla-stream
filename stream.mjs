@@ -206,7 +206,7 @@ async function startBgutilServer() {
        console.log('libs setup error:', e.message)
     }
 }
-
+*/
 
 function ensureNodeRuntime() {
     try {
@@ -226,7 +226,6 @@ function ensureNodeRuntime() {
 }
 
 ensureNodeRuntime()
-*/
 
 try {
   console.log('Updating yt-dlp...');
