@@ -11,7 +11,7 @@ import AdmZip from 'adm-zip'
 let bgutilStarted = false
 let bgutilFailCount = 0
 
-startBgutilServer()
+//startBgutilServer()
 
 const app = express()
 
