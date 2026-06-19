@@ -36,16 +36,21 @@ const ytDlpPath = isWindows
 
 function installYtdlpPlugin() {
     try {
-        // Create yt-dlp plugin directory
-        execSync('mkdir -p /root/yt-dlp-plugins')
+        const homeDir = execSync('echo $HOME').toString().trim()
+        console.log('HOME directory:', homeDir)
         
-        // Download plugin zip directly to correct location
+        const pluginDir = `${homeDir}/yt-dlp-plugins`
+        execSync(`mkdir -p ${pluginDir}`)
+        
         execSync('curl -L https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-ytdlp-pot-provider-rs.zip -o /tmp/bgutil-plugin.zip')
-        execSync('cd /tmp && unzip -o bgutil-plugin.zip -d /root/yt-dlp-plugins/')
+        execSync(`cd /tmp && unzip -o bgutil-plugin.zip -d ${pluginDir}/`)
         
-        // Verify
-        const files = execSync('ls /root/yt-dlp-plugins/').toString().trim()
-        console.log('yt-dlp plugins installed:', files)
+        const files = execSync(`find ${pluginDir} -type f`).toString().trim()
+        console.log('yt-dlp plugin files:', files)
+
+        // Also check what user yt-dlp will run as
+        const whoami = execSync('whoami').toString().trim()
+        console.log('Running as user:', whoami)
     } catch(e) {
         console.log('Plugin install failed:', e.message)
     }
