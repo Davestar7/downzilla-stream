@@ -20,7 +20,8 @@
     "express": "^5.2.1",
     "nodemon": "^3.1.14",
     "bgutils-js": "latest",
-    "youtubei.js": "latest"
+    "youtubei.js": "latest",
+    "adm-zip": "latest"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
