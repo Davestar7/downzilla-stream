@@ -37,7 +37,8 @@ const ytDlpPath = isWindows
 
 function installYtdlpPlugin() {
     try {
-        const pluginDir = '/app/operation/yt-dlp-plugins'
+        // Add the package-name subfolder yt-dlp expects
+        const pluginDir = '/app/operation/yt-dlp-plugins/bgutil-ytdlp-pot-provider'
         fs.mkdirSync(pluginDir, { recursive: true })
 
         const zipPath = '/tmp/bgutil-plugin.zip'
@@ -46,7 +47,7 @@ function installYtdlpPlugin() {
         const zip = new AdmZip(zipPath)
         zip.extractAllTo(pluginDir, true)
 
-        const files = execSync(`find ${pluginDir} -type f`).toString().trim()
+        const files = execSync(`find /app/operation/yt-dlp-plugins -type f`).toString().trim()
         console.log('yt-dlp plugin files:', files)
     } catch(e) {
         console.log('Plugin install failed:', e.message)
