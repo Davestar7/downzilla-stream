@@ -34,7 +34,7 @@ const isWindows = process.platform === "win32";
 const ytDlpPath = isWindows
   ? path.join(__dirname, "bin", "yt-dlp.exe")
   : "/app/operation/yt-dlp";
-
+/*
 function installYtdlpPlugin() {
     try {
         // Add the package-name subfolder yt-dlp expects
@@ -226,6 +226,7 @@ function ensureNodeRuntime() {
 }
 
 ensureNodeRuntime()
+*/
 
 try {
   console.log('Updating yt-dlp...');
