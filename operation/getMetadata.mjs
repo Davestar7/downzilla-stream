@@ -184,39 +184,36 @@ const metadataExtractor = async (req, res) => {
     }
 }
 
-function extractYoutube(url, cookie = null) {
+function extractYoutube(url, cookiePath = null) {
   return new Promise(async (resolve, reject) => {
     const strategies = [
       {
-        name: "default",
+        name: "android-web",
         args: [
           "--extractor-args",
-          "youtube:player_skip=webpage"
+          "youtube:player_client=android,web"
         ],
         useCookie: true
       },
       {
-        name: "default,mweb",
+        name: "android",
         args: [
           "--extractor-args",
-          "youtube:player_client=default,mweb"
+          "youtube:player_client=android"
         ],
         useCookie: true
       },
       {
-        name: "mweb",
+        name: "tv",
         args: [
           "--extractor-args",
-          "youtube:player_client=mweb"
+          "youtube:player_client=tv"
         ],
         useCookie: true
       },
       {
-        name: "default-no-cookie",
-        args: [
-          "--extractor-args",
-          "youtube:player_skip=webpage"
-        ],
+        name: "no-client-force",
+        args: [],
         useCookie: false
       }
     ];
@@ -224,143 +221,135 @@ function extractYoutube(url, cookie = null) {
     let bestResult = null;
     let bestScore = 0;
 
-    try {
-      for (const strategy of strategies) {
-        try {
-          const result = await new Promise((resolveRun, rejectRun) => {
-            const args = [
-              "--ignore-config",
-              "--skip-download",
-              "--no-playlist",
-              "--no-warnings",
-              "--no-call-home",
-              "--force-ipv4",
-              "--retries",
-              "10",
-              "--fragment-retries",
-              "10",
-              "--socket-timeout",
-              "20",
-              "--js-runtimes",
-              "node",
-              ...strategy.args,
-              "-J",
-              url
-            ];
+    for (const strategy of strategies) {
+      try {
+        const result = await new Promise((resolveRun, rejectRun) => {
+          const args = [
+            "--ignore-config",
+            "--skip-download",
+            "--no-playlist",
+            "--no-warnings",
+            "--force-ipv4",
+            "--retries",
+            "5",
+            "--fragment-retries",
+            "5",
+            "--socket-timeout",
+            "20",
 
-            if (strategy.useCookie && cookie) {
-              args.unshift(cookie);
-              args.unshift("--cookies");
-            }
+            // IMPORTANT: stable format selection
+            "--format",
+            "bv*+ba/b",
 
-            const proc = spawn(ytDlpPath, args, {
-              windowsHide: true
-            });
+            // JSON output
+            "-J",
+            url,
 
-            let stdout = "";
-            let stderr = "";
+            ...strategy.args
+          ];
 
-            const timeout = setTimeout(() => {
-              proc.kill("SIGKILL");
-              rejectRun(new Error("Timeout"));
-            }, 45000);
+          // COOKIE HANDLING (FIXED)
+          if (strategy.useCookie && cookiePath) {
+            args.unshift("--cookies", cookiePath);
+          }
 
-            proc.stdout.on("data", chunk => {
-              stdout += chunk.toString();
-            });
-
-            proc.stderr.on("data", chunk => {
-              stderr += chunk.toString();
-            });
-
-            proc.on("error", err => {
-              clearTimeout(timeout);
-              rejectRun(err);
-            });
-
-            proc.on("close", code => {
-              clearTimeout(timeout);
-
-              console.log("EXIT:", code);
-
-               console.log("STDOUT:", stdout);
-               console.log("STDERR:", stderr);
-
-              if (code !== 0 && !stdout) {
-                return rejectRun(
-                  new Error(
-                    stderr || `yt-dlp exited ${code}`
-                  )
-                );
-              }
-
-              try {
-                resolveRun(JSON.parse(stdout));
-              } catch {
-                rejectRun(
-                  new Error("Invalid JSON")
-                );
-              }
-            });
+          const proc = spawn("yt-dlp", args, {
+            windowsHide: true
           });
 
-          let score = 0;
+          let stdout = "";
+          let stderr = "";
 
-          if (result?.title) score += 10;
-          if (result?.duration) score += 10;
-          if (result?.uploader) score += 10;
-          if (result?.description) score += 5;
-          if (result?.thumbnails?.length) score += 10;
-          if (result?.formats?.length) score += result?.formats?.length;
-          if (result?.subtitles) score += 5;
-          if (result?.chapters) score += 5;
+          const timeout = setTimeout(() => {
+            proc.kill("SIGKILL");
+            rejectRun(new Error("yt-dlp timeout"));
+          }, 45000);
 
-          const valid =
-            result.title &&
-            result.duration &&
-            result.uploader &&
-            result.id &&
-            result.formats &&
-            result.formats.length >= 3;
+          proc.stdout.on("data", (chunk) => {
+            stdout += chunk.toString();
+          });
 
-          if (valid) {
-            return resolve({
-              success: true,
-              strategy: strategy.name,
-              data: result
-            });
-          }
+          proc.stderr.on("data", (chunk) => {
+            stderr += chunk.toString();
+          });
 
-          if (score > bestScore) {
-            bestScore = score;
-            bestResult = result;
-          }
-        } catch (e) {
-          console.log(
-            "Strategy failed:",
-            strategy.name,
-            e.message
-          );
-        }
-      }
+          proc.on("error", (err) => {
+            clearTimeout(timeout);
+            rejectRun(err);
+          });
 
-      if (bestResult) {
-        return resolve({
-          success: true,
-          strategy: "partial",
-          warning: "Metadata incomplete",
-          data: bestResult
+          proc.on("close", (code) => {
+            clearTimeout(timeout);
+
+            if (code !== 0 && !stdout) {
+              return rejectRun(new Error(stderr || `yt-dlp exited ${code}`));
+            }
+
+            try {
+              // SAFE JSON EXTRACTION (FIXED)
+              const start = stdout.indexOf("{");
+              const end = stdout.lastIndexOf("}");
+
+              if (start === -1 || end === -1) {
+                return rejectRun(new Error("No JSON output from yt-dlp"));
+              }
+
+              const json = stdout.slice(start, end + 1);
+              resolveRun(JSON.parse(json));
+            } catch (e) {
+              rejectRun(new Error("Failed to parse yt-dlp JSON"));
+            }
+          });
         });
-      }
 
-      reject(
-        new Error(
-          "All extraction strategies failed"
-        )
-      );
-    } catch (err) {
-      reject(err);
+        // SAFETY GUARD
+        if (!result) continue;
+
+        // SCORING SYSTEM (SAFE)
+        let score = 0;
+
+        if (result.title) score += 10;
+        if (result.duration) score += 10;
+        if (result.uploader) score += 10;
+        if (result.description) score += 5;
+        if (result.thumbnails?.length) score += 10;
+        if (result.formats?.length) score += result.formats.length;
+        if (result.subtitles) score += 5;
+        if (result.chapters) score += 5;
+
+        // VALIDATION (FIXED - NOT OVERSTRICT)
+        const valid =
+          result?.title &&
+          result?.id &&
+          result?.formats?.length > 0;
+
+        if (valid) {
+          return resolve({
+            success: true,
+            strategy: strategy.name,
+            data: result
+          });
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestResult = result;
+        }
+      } catch (e) {
+        console.log("Strategy failed:", strategy.name, e.message);
+      }
     }
+
+    if (bestResult) {
+      return resolve({
+        success: true,
+        strategy: "partial",
+        warning: "Incomplete metadata",
+        data: bestResult
+      });
+    }
+
+    reject(new Error("All extraction strategies failed"));
   });
 }
 
