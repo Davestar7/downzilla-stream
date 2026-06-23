@@ -86,36 +86,13 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
     if (isYouTubeUrl(url)) {
-      const args = [
- '--ignore-config',
+      try {
 
- '--skip-download',
-
- '--no-playlist',
-
- '--no-warnings',
-
- '--force-ipv4',
-
- '--retries', '10',
-
- '--fragment-retries', '10',
-
- '--js-runtimes', 'node',
-
- '--extractor-args',
- 'youtube:player_skip=webpage',
-
- '-J',
-
- url
-];
-
-if (cookie) {
- args.unshift(cookie);
- args.unshift('--cookies');
-}
-      proc = spawn(ytDlpPath, args);
+       const result = await extractYoutube(url, cookie);
+       return resolve(result);
+    } catch (err) {
+      return reject(err);
+      }
       
     } else {
         argss = [
@@ -205,6 +182,181 @@ if (cookie) {
         jobs.delete(id)
         res.status(500).json({ message: e.message })
     }
+}
+
+function extractYoutube(url, cookie = null) {
+  return new Promise(async (resolve, reject) => {
+    const strategies = [
+      {
+        name: "default",
+        args: [
+          "--extractor-args",
+          "youtube:player_skip=webpage"
+        ],
+        useCookie: true
+      },
+      {
+        name: "default,mweb",
+        args: [
+          "--extractor-args",
+          "youtube:player_client=default,mweb"
+        ],
+        useCookie: true
+      },
+      {
+        name: "mweb",
+        args: [
+          "--extractor-args",
+          "youtube:player_client=mweb"
+        ],
+        useCookie: true
+      },
+      {
+        name: "default-no-cookie",
+        args: [
+          "--extractor-args",
+          "youtube:player_skip=webpage"
+        ],
+        useCookie: false
+      }
+    ];
+
+    let bestResult = null;
+    let bestScore = 0;
+
+    try {
+      for (const strategy of strategies) {
+        try {
+          const result = await new Promise((resolveRun, rejectRun) => {
+            const args = [
+              "--ignore-config",
+              "--skip-download",
+              "--no-playlist",
+              "--no-warnings",
+              "--no-call-home",
+              "--force-ipv4",
+              "--retries",
+              "10",
+              "--fragment-retries",
+              "10",
+              "--socket-timeout",
+              "20",
+              "--js-runtimes",
+              "node",
+              ...strategy.args,
+              "-J",
+              url
+            ];
+
+            if (strategy.useCookie && cookie) {
+              args.unshift(cookie);
+              args.unshift("--cookies");
+            }
+
+            const proc = spawn("yt-dlp", args, {
+              windowsHide: true
+            });
+
+            let stdout = "";
+            let stderr = "";
+
+            const timeout = setTimeout(() => {
+              proc.kill("SIGKILL");
+              rejectRun(new Error("Timeout"));
+            }, 45000);
+
+            proc.stdout.on("data", chunk => {
+              stdout += chunk.toString();
+            });
+
+            proc.stderr.on("data", chunk => {
+              stderr += chunk.toString();
+            });
+
+            proc.on("error", err => {
+              clearTimeout(timeout);
+              rejectRun(err);
+            });
+
+            proc.on("close", code => {
+              clearTimeout(timeout);
+
+              if (code !== 0 && !stdout) {
+                return rejectRun(
+                  new Error(
+                    stderr || `yt-dlp exited ${code}`
+                  )
+                );
+              }
+
+              try {
+                resolveRun(JSON.parse(stdout));
+              } catch {
+                rejectRun(
+                  new Error("Invalid JSON")
+                );
+              }
+            });
+          });
+
+          let score = 0;
+
+          if (result.title) score += 10;
+          if (result.duration) score += 10;
+          if (result.uploader) score += 10;
+          if (result.description) score += 5;
+          if (result.thumbnails?.length) score += 10;
+          if (result.formats?.length) score += result.formats.length;
+          if (result.subtitles) score += 5;
+          if (result.chapters) score += 5;
+
+          const valid =
+            result.title &&
+            result.duration &&
+            result.uploader &&
+            result.id &&
+            result.formats &&
+            result.formats.length >= 3;
+
+          if (valid) {
+            return resolve({
+              success: true,
+              strategy: strategy.name,
+              data: result
+            });
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestResult = result;
+          }
+        } catch (e) {
+          console.log(
+            "Strategy failed:",
+            strategy.name,
+            e.message
+          );
+        }
+      }
+
+      if (bestResult) {
+        return resolve({
+          success: true,
+          strategy: "partial",
+          warning: "Metadata incomplete",
+          data: bestResult
+        });
+      }
+
+      reject(
+        new Error(
+          "All extraction strategies failed"
+        )
+      );
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
 
 export {metadataExtractor}
