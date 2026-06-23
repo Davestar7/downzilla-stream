@@ -332,9 +332,7 @@ function extractYoutube(url, cookiePath = null) {
           bestScore = score;
           bestResult = result;
         }
-      } catch (e) {
-        console.log("Strategy failed:", strategy.name, e.message);
-      }
+      } catch (e) {}
     }
 
     if (bestResult) {
