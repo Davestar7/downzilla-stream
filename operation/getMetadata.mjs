@@ -92,7 +92,7 @@ const metadataExtractor = async (req, res) => {
        return resolve(result);
     } catch (err) {
       return reject(err.message);
-      }
+    }
       
     } else {
         argss = [
@@ -236,15 +236,12 @@ function extractYoutube(url, cookiePath = null) {
             "5",
             "--socket-timeout",
             "20",
-
             // IMPORTANT: stable format selection
             "--format",
             "bv*+ba/b",
-
             // JSON output
             "-J",
             url,
-
             ...strategy.args
           ];
           
