@@ -89,7 +89,7 @@ const metadataExtractor = async (req, res) => {
       try {
 
        const result = extractYoutube(url, cookie);
-       return resolve(result.data);
+       return resolve(result);
     } catch (err) {
       return reject(err.message);
       }
@@ -324,11 +324,7 @@ function extractYoutube(url, cookiePath = null) {
           result?.formats?.length > 0;
 
         if (valid) {
-          return resolve({
-            success: true,
-            strategy: strategy.name,
-            data: result
-          });
+          return resolve(result);
         }
 
         if (score > bestScore) {
