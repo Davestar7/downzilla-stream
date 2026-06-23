@@ -281,6 +281,11 @@ function extractYoutube(url, cookie = null) {
             proc.on("close", code => {
               clearTimeout(timeout);
 
+              console.log("EXIT:", code);
+
+               console.log("STDOUT:", stdout);
+               console.log("STDERR:", stderr);
+
               if (code !== 0 && !stdout) {
                 return rejectRun(
                   new Error(
@@ -301,14 +306,14 @@ function extractYoutube(url, cookie = null) {
 
           let score = 0;
 
-          if (result.title) score += 10;
-          if (result.duration) score += 10;
-          if (result.uploader) score += 10;
-          if (result.description) score += 5;
-          if (result.thumbnails?.length) score += 10;
-          if (result.formats?.length) score += result.formats.length;
-          if (result.subtitles) score += 5;
-          if (result.chapters) score += 5;
+          if (result?.title) score += 10;
+          if (result?.duration) score += 10;
+          if (result?.uploader) score += 10;
+          if (result?.description) score += 5;
+          if (result?.thumbnails?.length) score += 10;
+          if (result?.formats?.length) score += result?.formats?.length;
+          if (result?.subtitles) score += 5;
+          if (result?.chapters) score += 5;
 
           const valid =
             result.title &&
