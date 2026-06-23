@@ -253,7 +253,7 @@ function extractYoutube(url, cookie = null) {
               args.unshift("--cookies");
             }
 
-            const proc = spawn("yt-dlp", args, {
+            const proc = spawn(ytDlpPath, args, {
               windowsHide: true
             });
 
