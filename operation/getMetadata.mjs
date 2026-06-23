@@ -88,9 +88,8 @@ const metadataExtractor = async (req, res) => {
     if (isYouTubeUrl(url)) {
       try {
 
-       const result = extractYoutube(url, cookie);
-        const res = result.json()
-       return resolve(res);
+       const { data } = extractYoutube(url, cookie);
+       return resolve(data);
     } catch (err) {
       return reject(err.message);
       }
