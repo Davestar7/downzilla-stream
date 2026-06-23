@@ -247,6 +247,7 @@ function extractYoutube(url, cookiePath = null) {
 
             ...strategy.args
           ];
+          
 
           // COOKIE HANDLING (FIXED)
           if (strategy.useCookie && cookiePath) {
