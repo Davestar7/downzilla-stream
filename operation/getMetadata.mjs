@@ -88,8 +88,8 @@ const metadataExtractor = async (req, res) => {
     if (isYouTubeUrl(url)) {
       try {
 
-       const { data } = extractYoutube(url, cookie);
-       return resolve(data);
+       const result = extractYoutube(url, cookie);
+       return resolve(result);
     } catch (err) {
       return reject(err.message);
       }
@@ -341,12 +341,7 @@ function extractYoutube(url, cookiePath = null) {
     }
 
     if (bestResult) {
-      return resolve({
-        success: true,
-        strategy: "partial",
-        warning: "Incomplete metadata",
-        data: bestResult
-      });
+      return resolve(bestResult);
     }
 
     reject(new Error("All extraction strategies failed"));
