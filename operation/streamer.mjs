@@ -24,10 +24,6 @@ const tk = new Map()
 const knowStreamer = (req, res) => {
     const { url, title, formats = null, height = null, headers = null, vid } = req.body
 
-    console.log('knowStreamer formats count:', formats?.length)
-    console.log('knowStreamer first format url:', formats?.[0]?.url)
-    console.log('knowStreamer first format keys:', formats?.[0] ? Object.keys(formats[0]) : 'no formats')
-
     if (!url || !title) {
         return res.status(400).json({
             success: false,
