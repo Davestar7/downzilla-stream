@@ -86,24 +86,38 @@ const metadataExtractor = async (req, res) => {
                 let argss
 
     if (isYouTubeUrl(url)) {
-      /*
-      argss = [
-       '--cookies', cookie,
-       '--verbose',
-       '--skip-download',
-       '--no-check-certificate',
-      '--no-playlist',
-       '--force-ipv4',
-       '--retries', '3',
-       '--fragment-retries', '3',
-        '--extractor-args', 'youtube:player_client=android,web_safari',
-       '--ignore-errors',
-       '--no-cache-dir',
-        '-j',
-        url
-        ]
-        */
-      argss = argument
+      const args = [
+ '--ignore-config',
+
+ '--skip-download',
+
+ '--no-playlist',
+
+ '--no-warnings',
+
+ '--no-call-home',
+
+ '--force-ipv4',
+
+ '--retries', '10',
+
+ '--fragment-retries', '10',
+
+ '--js-runtimes', 'node',
+
+ '--extractor-args',
+ 'youtube:player_skip=webpage',
+
+ '-J',
+
+ url
+];
+
+if (cookie) {
+ args.unshift(cookie);
+ args.unshift('--cookies');
+}
+      proc = spawn(ytDlpPath, args);
       
     } else {
         argss = [
@@ -120,11 +134,12 @@ const metadataExtractor = async (req, res) => {
             '-j',
             url
         ]
+      proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"], cwd: '/app/operation', env: { ...process.env, PATH: `/usr/local/bin:/usr/bin:${process.env.PATH}` } })
+            
     }
 
     // ✅ Only called once
-              proc = spawn(ytDlpPath, argss, { stdio: ["ignore", "pipe", "pipe"], cwd: '/app/operation', env: { ...process.env, PATH: `/usr/local/bin:/usr/bin:${process.env.PATH}` } })
-            
+              
             } else if (type === "playlist") {
                 proc = spawn(ytDlpPath, argument, { stdio: ["ignore", "pipe", "pipe"] })
             } else if (type === "audio") {
