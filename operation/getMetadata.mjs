@@ -95,8 +95,6 @@ const metadataExtractor = async (req, res) => {
 
  '--no-warnings',
 
- '--no-call-home',
-
  '--force-ipv4',
 
  '--retries', '10',
