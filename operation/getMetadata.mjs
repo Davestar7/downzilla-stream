@@ -249,12 +249,12 @@ async function extractYoutube(urls,cookiePath=null){
   },30000);
 
   proc.stdout.on("data",chunk=>{
-    console.log("[STDOUT] " + d.toString());
+    console.log("[STDOUT] " + chunk.toString());
    stdout+=chunk.toString();
   });
 
   proc.stderr.on("data",chunk=>{
-    console.log("[STDERR] " +d.toString())
+    console.log("[STDERR] " +chunk.toString())
    stderr+=chunk.toString();
   });
 
