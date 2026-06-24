@@ -228,7 +228,6 @@ function extractYoutube(url){
    "--ignore-config",
    "--skip-download",
    "--dump-single-json",
-   "--extract-flat","false",
    "--no-playlist",
    "--force-ipv4",
    "--no-warnings",
