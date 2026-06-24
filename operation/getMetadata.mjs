@@ -199,81 +199,111 @@ const metadataExtractor = async (req, res) => {
 async function extractYoutube(url,cookiePath=null){
  url=normalizeYoutubeUrl(url);
 
-  const nodePath = execSync('which node').toString().trim();
-
-// const nodePath=process.execPath;
-
- const strategies=[
-  {name:"cookie",useCookie:true},
-  {name:"fallback",useCookie:false}
+ const args=[
+  "--ignore-config",
+  "--skip-download",
+  "--no-playlist",
+  "--force-ipv4",
+  "--retries","2",
+  "--socket-timeout","20",
+  "--js-runtimes",`node:${nodePath}`,
+  "-J"
  ];
 
- let lastError;
-
- for(const strategy of strategies){
-  try{
-   const result=await new Promise((resolve,reject)=>{
-    const args=[
-'--ignore-config',
-'--skip-download',
-'--no-playlist',
-'--force-ipv4',
-'--retries','3',
-'--fragment-retries','3',
-'--socket-timeout','20',
-'--js-runtimes',`node:${nodePath}`,
-'-J',
-]
-    if(strategy.useCookie&&cookiePath){
-     args.push("--cookies",cookiePath);
-    }
-
-    args.push(url);
-
-     console.log("YT-DLP COMMAND:");
-      console.log(ytDlpPath);
-      console.log(args);
-     
-    const proc= spawn(ytDlpPath,args,{windowsHide:true});
-
-    let stdout="";
-    let stderr="";
-
-    proc.stdout.on("data",c=>stdout+=c.toString());
-
-    proc.stderr.on("data",c=>stderr+=c.toString());
-
-    proc.on("close",code=>{
-     if(code!==0){
-      return reject(new Error(stderr||`yt-dlp exited ${code}`));
-     }
-
-      
-     try{
-      resolve(JSON.parse(stdout));
-     }catch(e){
-      reject(new Error(`JSON parse failed: ${e.message}`));
-     }
-    });
-
-    proc.on("error",reject);
-   });
-
-   if(result?.title&&result?.id){
-    return result;
-   }
-
-  }catch(e){
-   lastError=e;
-   console.log(`[extractYoutube] ${strategy.name}:`,e.message);
-
-   if(/429|Too Many Requests/i.test(e.message)){
-    throw new Error("YouTube temporarily rate-limited this server.");
-   }
-  }
+ if(cookiePath){
+  args.push("--cookies",cookiePath);
  }
 
- throw new Error(lastError?.message||"Extraction failed");
+ args.push(url);
+
+ console.log("[extractYoutube] running:");
+ console.log(ytDlpPath);
+ console.log(args.join(" "));
+
+ return new Promise((resolve,reject)=>{
+  const proc=spawn(ytDlpPath,args,{
+   windowsHide:true
+  });
+
+  let stdout="";
+  let stderr="";
+  let settled=false;
+
+  const finish=(fn,data)=>{
+   if(settled) return;
+   settled=true;
+   fn(data);
+  };
+
+  const timeout=setTimeout(()=>{
+   try{
+    proc.kill("SIGKILL");
+   }catch(_){}
+
+   finish(
+    reject,
+    new Error("yt-dlp timeout after 30 seconds")
+   );
+  },30000);
+
+  proc.stdout.on("data",chunk=>{
+   stdout+=chunk.toString();
+  });
+
+  proc.stderr.on("data",chunk=>{
+   stderr+=chunk.toString();
+  });
+
+  proc.on("error",err=>{
+   clearTimeout(timeout);
+
+   finish(reject,err);
+  });
+
+  proc.on("close",code=>{
+   clearTimeout(timeout);
+
+   if(settled) return;
+
+   if(code!==0){
+    return finish(
+     reject,
+     new Error(stderr.trim()||`yt-dlp exited ${code}`)
+    );
+   }
+
+   try{
+    let json=stdout.trim();
+
+    const start=json.indexOf("{");
+    const end=json.lastIndexOf("}");
+
+    if(start!==-1&&end!==-1){
+     json=json.slice(start,end+1);
+    }
+
+    const result=JSON.parse(json);
+
+    if(!result?.id){
+     return finish(
+      reject,
+      new Error("Invalid YouTube metadata")
+     );
+    }
+
+    finish(resolve,result);
+
+   }catch(err){
+
+    finish(
+     reject,
+     new Error(
+      `JSON parse failed: ${err.message}\nSTDERR:${stderr}`
+     )
+    );
+   }
+  });
+ });
 }
 
 export {metadataExtractor}
