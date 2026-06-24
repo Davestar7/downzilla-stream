@@ -142,6 +142,61 @@ function ensureCookiesFile() {
   return COOKIES_PATH;
 }
 
+function buildYtdlpArgs( url,  outputPath, cookie, quality = null, defaultHeaders = [], headerArgs = []) {
+
+  let format;
+
+  if (quality) {
+    format =
+      `bestvideo[height<=${quality}]+bestaudio/` +
+      `best[height<=${quality}]/` +
+      `best`;
+  } else {
+    format =
+      `bestvideo+bestaudio/` +
+      `best`;
+  }
+
+  return [
+    url,
+
+    '--format', format,
+
+    '--merge-output-format', 'mp4',
+
+    '--extractor-args',
+    'youtube:player_client=android,web',
+
+    '--cookies',
+    cookie,
+
+    '--js-runtimes',
+    'node',
+
+    '--retries',
+    '10',
+
+    '--fragment-retries',
+    '10',
+
+    '--socket-timeout',
+    '30',
+
+    '--force-ipv4',
+
+    '--ignore-config',
+
+    '--no-playlist',
+
+    ...defaultHeaders,
+
+    ...headerArgs,
+
+    '-o',
+    outputPath
+  ];
+}
+
 const processes = new Map()
 
 setInterval(() => {
@@ -154,4 +209,4 @@ setInterval(() => {
     }
 }, 5 * 60 * 1000)
 
-export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments, chooseFormat, ensureCookiesFile, processes}
+export {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, returnCorrectForArguments, chooseFormat, ensureCookiesFile, processes, buildYtdlpArgs}
