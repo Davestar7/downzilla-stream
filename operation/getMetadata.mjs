@@ -214,16 +214,16 @@ async function extractYoutube(url,cookiePath=null){
   try{
    const result=await new Promise((resolve,reject)=>{
     const args=[
-     "--ignore-config",
-     "--skip-download",
-     "--no-playlist",
-     "--force-ipv4",
-     "--socket-timeout","20",
-     "--retries","1",
-     "--js-runtimes",`node:${nodePath}`,
-     "-J"
-    ];
-
+'--ignore-config',
+'--skip-download',
+'--no-playlist',
+'--force-ipv4',
+'--retries','3',
+'--fragment-retries','3',
+'--socket-timeout','20',
+'--js-runtimes',`node:${nodePath}`,
+'-J',
+]
     if(strategy.useCookie&&cookiePath){
      args.push("--cookies",cookiePath);
     }
