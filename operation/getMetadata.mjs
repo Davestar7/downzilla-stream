@@ -60,7 +60,7 @@ async function generatePoToken(videoId) {
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
 
-    const theJob = jobs.get(id)
+    const theJob = jobs.get(id);
     
     if (!theJob) {
         return res.status(404).json({ message: "id not found" })
