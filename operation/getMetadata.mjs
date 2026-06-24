@@ -199,7 +199,9 @@ const metadataExtractor = async (req, res) => {
 async function extractYoutube(url,cookiePath=null){
  url=normalizeYoutubeUrl(url);
 
- const nodePath=process.execPath;
+  const nodePath = execSync('which node').toString().trim();
+
+// const nodePath=process.execPath;
 
  const strategies=[
   {name:"cookie",useCookie:true},
