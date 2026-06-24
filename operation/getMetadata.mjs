@@ -198,33 +198,38 @@ const metadataExtractor = async (req, res) => {
     }
 }
 
-async function extractYoutube(urls,cookiePath=null){
- let url = normalizeYoutubeUrl(urls);
-
- const args=[
-  "--ignore-config",
-  "--skip-download",
-  "--no-playlist",
-  "--force-ipv4",
-  "--retries","2",
-  "--socket-timeout","20",
-  "--js-runtimes",`node:${nodePath}`,
-  "-J"
- ];
-
- if(cookiePath){
-  args.push("--cookies",cookiePath);
- }
-
- args.push(url);
-
- console.log("[extractYoutube] running:");
- console.log(ytDlpPath);
- console.log(args.join(" "));
+async function extractYoutube(url,cookiePath=null){
+ url=normalizeYoutubeUrl(url);
 
  return new Promise((resolve,reject)=>{
+
+  const args=[
+   "--ignore-config",
+   "--skip-download",
+   "--no-playlist",
+   "--force-ipv4",
+   "--dump-single-json",
+   "--no-warnings",
+   "--js-runtimes",
+   `node:${process.execPath}`
+  ];
+
+  if(cookiePath){
+   args.push("--cookies",cookiePath);
+  }
+
+  args.push(url);
+
+  console.log("[YT-DLP]");
+  console.log(ytDlpPath);
+  console.log(args.join(" "));
+
   const proc=spawn(ytDlpPath,args,{
-   windowsHide:true
+   windowsHide:true,
+   env:{
+    ...process.env,
+    PATH:process.env.PATH
+   }
   });
 
   let stdout="";
@@ -232,7 +237,7 @@ async function extractYoutube(urls,cookiePath=null){
   let settled=false;
 
   const finish=(fn,data)=>{
-   if(settled) return;
+   if(settled)return;
    settled=true;
    fn(data);
   };
@@ -244,61 +249,58 @@ async function extractYoutube(urls,cookiePath=null){
 
    finish(
     reject,
-    new Error("yt-dlp timeout after 30 seconds")
+    new Error("yt-dlp timeout after 60 seconds")
    );
-  },30000);
+  },60000);
 
   proc.stdout.on("data",chunk=>{
-    console.log("[STDOUT] " + chunk.toString());
    stdout+=chunk.toString();
   });
 
   proc.stderr.on("data",chunk=>{
-    console.log("[STDERR] " +chunk.toString())
    stderr+=chunk.toString();
   });
 
   proc.on("error",err=>{
-    console.log("[SPAWN ERROR] " +err);
    clearTimeout(timeout);
-
    finish(reject,err);
   });
 
   proc.on("close",code=>{
-    console.log("[CLOSE] "+code)
    clearTimeout(timeout);
 
-   if(settled) return;
+   if(settled)return;
 
    if(code!==0){
+
+    if(/Too Many Requests|429/i.test(stderr)){
+     return finish(
+      reject,
+      new Error("YouTube rate limited this server")
+     );
+    }
+
+    if(/Sign in to confirm you're not a bot/i.test(stderr)){
+     return finish(
+      reject,
+      new Error("YouTube blocked this server IP")
+     );
+    }
+
     return finish(
      reject,
-     new Error(stderr.trim()||`yt-dlp exited ${code}`)
+     new Error(stderr||`yt-dlp exited ${code}`)
     );
    }
 
-    proc.on("exit",code=>{
-      console.log("[EXIT] " + code);
-    });
-    
-
    try{
-    let json=stdout.trim();
 
-    const start=json.indexOf("{");
-    const end=json.lastIndexOf("}");
-
-    if(start!==-1&&end!==-1){
-     json=json.slice(start,end+1);
-    }
-
-    const result=JSON.parse(json);
+    const result=JSON.parse(stdout);
 
     if(!result?.id){
      return finish(
       reject,
-      new Error("Invalid YouTube metadata")
+      new Error("Invalid metadata")
      );
     }
 
@@ -308,9 +310,7 @@ async function extractYoutube(urls,cookiePath=null){
 
     finish(
      reject,
-     new Error(
-      `JSON parse failed: ${err.message}\nSTDERR:${stderr}`
-     )
+     new Error(`JSON parse failed: ${err.message}`)
     );
    }
   });
