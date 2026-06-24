@@ -328,7 +328,7 @@ function extractYoutube(url, cookiePath = null) {
         if (score > bestScore) {
           bestScore = score;
           bestResult = result;
-        }
+        };
       } catch (e) {}
     }
 
