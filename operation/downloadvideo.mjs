@@ -97,7 +97,7 @@ const startDownload = async (req, res) => {
             '-o', outputPath
         ]
         */
-        const ytdlpArg = buildYtdlpArgs(url, outputPath, cookie, newHeight, defaultHeaders, headerArgs])
+        const ytdlpArg = buildYtdlpArgs(url, outputPath, cookie, newHeight, defaultHeaders, headerArgs)
         console.log(ytdlpArg)
       
         const yt = spawn(ytDlpPath, ytdlpArg, {
