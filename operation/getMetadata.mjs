@@ -184,158 +184,186 @@ const metadataExtractor = async (req, res) => {
 }
 
 async function extractYoutube(url, cookiePath = null) {
+
   const strategies = [
     {
-      name: "android-web",
-      args: ["--extractor-args", "youtube:player_client=android,web"],
+      name: "default",
+      args: [
+        "--extractor-args",
+        "youtube:player_skip=webpage"
+      ],
       useCookie: true
     },
+
     {
-      name: "android",
-      args: ["--extractor-args", "youtube:player_client=android"],
+      name: "web",
+      args: [
+        "--extractor-args",
+        "youtube:player_client=web"
+      ],
       useCookie: true
     },
+
     {
-      name: "tv",
-      args: ["--extractor-args", "youtube:player_client=tv"],
+      name: "mweb",
+      args: [
+        "--extractor-args",
+        "youtube:player_client=mweb"
+      ],
       useCookie: true
     },
+
     {
-      name: "no-client-force",
+      name: "no-cookie",
       args: [],
       useCookie: false
     }
   ];
 
-  let bestResult = null;
-  let bestScore = 0;
-  let lastError = null;
+  let lastError;
 
   for (const strategy of strategies) {
-    let proc = null;
 
     try {
+
       const result = await new Promise((resolve, reject) => {
+
         const args = [
           "--ignore-config",
+
           "--skip-download",
+
           "--no-playlist",
-          "--no-warnings",
+
           "--force-ipv4",
-          "--retries", "2",           // reduced: info extraction doesn't need 5 retries
-          "--fragment-retries", "2",
-          "--socket-timeout", "15",
-          "--format", "bv*+ba/b",
-          "-J",
-          url,
+
+          "--retries", "3",
+
+          "--fragment-retries", "3",
+
+          "--socket-timeout", "20",
+
+          "--js-runtimes", "node",
+
           ...strategy.args
         ];
 
-        // Push cookies to end — more predictable than unshift before all other flags
-        if (strategy.useCookie && cookiePath) {
-          args.push("--cookies", cookiePath);
+        if (
+          strategy.useCookie &&
+          cookiePath
+        ) {
+          args.push(
+            "--cookies",
+            cookiePath
+          );
         }
 
-        proc = spawn(ytDlpPath, args, {
-          windowsHide: true,
-          stdio: "pipe",       // explicit, even though it's the default
-          cwd: __dirname       // consistent with rest of codebase
-        });
+        args.push(
+          "-J",
+          url
+        );
+
+        console.log(
+          "[yt-dlp]",
+          args.join(" ")
+        );
+
+        const proc = spawn(
+          ytDlpPath,
+          args,
+          {
+            windowsHide: true
+          }
+        );
 
         let stdout = "";
         let stderr = "";
-        
-        let settled = false;
-
-        const settle = (fn, val) => {
-          if (settled) return;
-          settled = true;
-          fn(val);
-        };
 
         const timeout = setTimeout(() => {
-          console.log(`[extractYoutube] strategy "${strategy.name}" timed out`);
-          if (proc && !proc.killed) proc.kill("SIGKILL");
-          settle(reject, new Error(`Strategy "${strategy.name}" timed out after 30s`));
+
+          proc.kill("SIGKILL");
+
+          reject(
+            new Error(
+              "Timeout"
+            )
+          );
+
         }, 30000);
 
-        proc.stdout.on("data", (chunk) => {
-          stdout += chunk.toString();
-        });
-
-        proc.stderr.on("data", (chunk) => {
-          stderr += chunk.toString();
-        });
-
-        proc.on("error", (err) => {
-          clearTimeout(timeout);
-          console.log(`[extractYoutube] strategy "${strategy.name}" spawn error:`, err.message);
-          settle(reject, err);
-        });
-
-        proc.on("close", (code) => {
-          clearTimeout(timeout);
-          if (settled) return;
-
-          if (code !== 0 && !stdout) {
-            return settle(reject, new Error(stderr?.trim() || `yt-dlp exited with code ${code}`));
+        proc.stdout.on(
+          "data",
+          chunk => {
+            stdout += chunk;
           }
+        );
 
-          try {
-            const start = stdout.indexOf("{");
-            const end = stdout.lastIndexOf("}");
+        proc.stderr.on(
+          "data",
+          chunk => {
+            stderr += chunk;
+          }
+        );
 
-            if (start === -1 || end === -1) {
-              return settle(reject, new Error("No JSON in yt-dlp output"));
+        proc.on(
+          "error",
+          err => {
+
+            clearTimeout(timeout);
+
+            reject(err);
+
+          }
+        );
+
+        proc.on(
+          "close",
+          code => {
+
+            clearTimeout(timeout);
+
+            console.log(
+              "EXIT:",
+              code
+            );
+
+            console.log(
+              "STDOUT:",
+              stdout
+            );
+
+            console.log(
+              "STDERR:",
+              stderr
+            );
+
+            if (!stdout.trim()) {
+              return reject(new Error( stderr ||`yt-dlp exited ${code}`));
             }
 
-            const json = stdout.slice(start, end + 1);
-            settle(resolve, JSON.parse(json));
-          } catch (e) {
-            settle(reject, new Error("Failed to parse yt-dlp JSON: " + e.message));
+            try {
+              resolve( JSON.parse( stdout));
+            } catch (e) {
+              reject(new Error(`JSON parse failed: ${e.message}`));
+            }
           }
-        });
+        );
       });
 
-      if (!result) continue;
-
-      let score = 0;
-      if (result.title) score += 10;
-      if (result.duration) score += 10;
-      if (result.uploader) score += 10;
-      if (result.description) score += 5;
-      if (result.thumbnails?.length) score += 10;
-      if (result.formats?.length) score += result.formats.length;
-      if (result.subtitles) score += 5;
-      if (result.chapters) score += 5;
-
-      const valid = result?.title && result?.id && result?.formats?.length > 0;
-
-      if (valid) {
-        console.log(`[extractYoutube] strategy "${strategy.name}" succeeded — ${result.formats.length} formats`);
+      if (
+        result?.title &&
+        result?.id
+      ) {
         return result;
       }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestResult = result;
-      }
-
     } catch (e) {
       lastError = e;
-      console.log(`[extractYoutube] strategy "${strategy.name}" failed:`, e.message);
-      if (proc && !proc.killed) {
-        try { proc.kill("SIGKILL"); } catch (_) {}
-      }
+      console.log(`[extractYoutube] ${strategy.name}: ${e.message}`);
     }
   }
-
-  if (bestResult) {
-    console.log(`[extractYoutube] all strategies exhausted — returning best partial result (score: ${bestScore})`);
-    return bestResult;
-  }
-
-  throw new Error(`All extraction strategies failed. Last error: ${lastError?.message ?? "unknown"}`);
+  throw new Error(
+    `All extraction strategies failed. Last error: ${lastError?.message}`
+  );
 }
 
 export {metadataExtractor}
