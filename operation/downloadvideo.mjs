@@ -19,6 +19,12 @@ const ffmpegPath = isWindows
 
 const tempPath = path.join(__dirname, "temp");
 
+// FIX 1: Ensure temp directory exists at startup — yt-dlp fails silently if it doesn't
+if (!fs.existsSync(tempPath)) {
+    fs.mkdirSync(tempPath, { recursive: true })
+    console.log('Created temp directory:', tempPath)
+}
+
 const startDownload = async (req, res) => {
     const {url, format_id, title, formats, height = null, headers, vid} = req.body
 
@@ -36,7 +42,6 @@ const startDownload = async (req, res) => {
         const newtitle = sanname(title).toString().toLowerCase().trim()
         const filename = (newtitle || "video") + "_downzilla.mp4"
 
-        // Generate fileId - use vid if not null, otherwise use title
         let fileId
         if (vid) {
             fileId = crypto.createHash('md5').update(`${vid}-${formatc || 'default'}`).digest('hex')
@@ -46,7 +51,7 @@ const startDownload = async (req, res) => {
 
         const outputPath = path.join(tempPath, `${fileId}.mp4`)
 
-        // Reuse existing file (created by download OR stream)
+        // Reuse existing completed file
         if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
             let job = processes.get(fileId)
             if (!job) {
@@ -59,7 +64,7 @@ const startDownload = async (req, res) => {
             return res.json({ success: true, jobId: fileId })
         }
 
-        // Reuse in-progress job (started by download OR stream)
+        // Attach to already in-progress job
         let existingJob = processes.get(fileId)
         if (existingJob && existingJob.status === "processing") {
             existingJob.filename = filename
@@ -80,7 +85,17 @@ const startDownload = async (req, res) => {
             '--add-header', `User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
         ]
 
-        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4][filesize<200M]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[filesize<200M]/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...defaultHeaders, ...headerArgs, '-o', outputPath]
+        const ytdlpArg = [
+            url,
+            '-f', 'bestvideo[ext=mp4][filesize<200M]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[filesize<200M]/best',
+            '--merge-output-format', 'mp4',
+            '--extractor-args', 'youtube:player_client=tv',
+            '--js-runtimes', 'node',
+            '--cookies', cookie,
+            ...defaultHeaders,
+            ...headerArgs,
+            '-o', outputPath
+        ]
 
         const yt = spawn(ytDlpPath, ytdlpArg, {
             stdio: "pipe",
@@ -95,23 +110,34 @@ const startDownload = async (req, res) => {
             expiresAt: Date.now() + 30 * 60 * 1000
         })
 
-        // Return job ID immediately
+        // Respond immediately — client polls confirmDownload for status
         res.json({ success: true, jobId: fileId })
+
+        // FIX 2: Consume stderr — without this, the 64KB pipe buffer fills up on
+        // large downloads and yt-dlp blocks indefinitely waiting for it to drain.
+        yt.stderr.on('data', (data) => {
+            console.log('yt-dlp:', data.toString())
+        })
+        yt.stdout.on('data', () => {}) // drain stdout
 
         yt.on("close", (code) => {
             const job = processes.get(fileId)
             if (!job) return
 
             if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                console.log('yt-dlp download done, file size:', fs.statSync(outputPath).size)
                 job.status = "done"
                 job.expiresAt = Date.now() + 30 * 60 * 1000
             } else {
+                console.log('yt-dlp download failed with code:', code)
                 job.status = "failed"
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
             }
         })
 
-        yt.on("error", () => {
+        // FIX 3: Capture the err argument — previously swallowed silently
+        yt.on("error", (err) => {
+            console.log('yt-dlp spawn error:', err.message)
             const job = processes.get(fileId)
             if (job) {
                 job.status = "failed"
@@ -190,7 +216,10 @@ const serveDownload = async (req, res) => {
             res.setHeader("Access-Control-Expose-Headers", "Content-Length")
 
             const fileStream = fs.createReadStream(job.outputPath)
-            fileStream.on("error", (err) => { if (!res.writableEnded) res.end() })
+            fileStream.on("error", (err) => {
+                console.log('serveDownload stream error:', err.message)
+                if (!res.writableEnded) res.end()
+            })
             fileStream.pipe(res)
             return
         }
@@ -210,134 +239,18 @@ const serveDownload = async (req, res) => {
         })
 
         const fileStream = fs.createReadStream(job.outputPath, { start, end })
-        fileStream.on("error", (err) => { if (!res.writableEnded) res.end() })
+        fileStream.on("error", (err) => {
+            console.log('serveDownload range stream error:', err.message)
+            if (!res.writableEnded) res.end()
+        })
         fileStream.pipe(res)
 
     } catch (e) {
         console.log(e)
         res.status(500).json({ success: false, message: e.message })
     }
-  }
-
+}
 
 
 export { startDownload, confirmDownload, serveDownload };
-
-
-
-
-
-
-
-/*
-const downloadVideoFunction = async (req, res) => {
-    const {url, format_id, title, start, end, formats, height = null, headers} = req.body
-    
-    let forFormat;
-    let for_id = format_id
-
-    const newHeight = getHeightFromString(height)
-    
-    if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
-        const selected = selectvideoformat(formats)
-        if (selected === null) {
-            return res.status(400).json({
-                success: false,
-                message: "downloadable format not found"
-            })
-        }
-        for_id = selected.format_id
-
-        forFormat = selectaudioformat(formats)
-        if (forFormat === null) {
-            return res.status(400).json({
-                success: false,
-                message: "no audio format found"
-            })
-        }
-    } 
-    // const audio_id = forFormat.format_id
-
-    // const domain = getMainDomain(url)
-    let yt
-
-    let newtitle = sanname(title).toString().toLowerCase().trim()
-    const filename = (newtitle || "video") + "_downzilla.mp4"
-    
-    const id = crypto.randomBytes(6).toString('hex');
-    const outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
-
-
-    try {   
-        const formatc = chooseFormat(Number(height))
-        // console.log("audioId: ", audio_id, "formatId: ", format_id, "timer: ", start, "-to-", end)
-        // let format = audio_id ? `${for_id}+${audio_id}` : `${format_id}+bestaudio`
-        // format = `bv*[height<=1080][ext=mp4]+ba[ext=m4a]`
-
-        const cookie = ensureCookiesFile()
-
-        await res.setHeader("Content-Type", "video/mp4");
-        await res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        // const trimArg = `ffmpeg:-ss ${start} -to ${end} -map 0:v -map 0:a`
-        
-        let headerArgs = []
-        
-        if (headers && typeof headers === "object") {
-            for (const [key, value] of Object.entries(headers)) {
-                headerArgs.push('--add-header', `${key}: ${value}`);
-               }
-             }
-             
-
-        
-        // const nodePath = process.platform === 'win32' ? process.execPath : '/usr/user/bin'
-        // console.log(`node path: ${nodePath}`)
-
-        // const ytdlpArg = [ '-f', format || 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s'), url];
-        // const ytdlpArg = [ url, '-f', format || 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
-        // const ytdlpArg = [ url, '-f', formatc, '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', 'cookies', cookies, '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
-        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=tv', '--js-runtimes', 'node', '--cookies', cookie, ...headerArgs, '-o', '-'];
-
-        yt = spawn(ytDlpPath, ytdlpArg, {
-            stdio: "inherit",
-            cwd: __dirname
-        })
-    } catch (e) {
-        if (fs.existsSync(outputPath)) {
-            fs.unlink(outputPath, () => {});
-        }
-        return res.status(501).json({
-            success: false,
-            message: "error trying to download request: " + e
-        })
-    }
-        
-    // await yt.stdout.pipe(res)
-
-    // yt.stderr.on("data", async data =>  console.log("data: " + await data.toString()))
-
-    await req.on("close", () => {
-        yt.kill("SIGKILL")
-    })
-    yt.on("close", async (code) => {
-        if (code !== 0) {
-            if (fs.existsSync(outputPath)) {
-                fs.unlink(outputPath, () => {});
-            }
-            
-            if (!res.writableEnded) {
-                return res.status(500).json({
-                    success: false,
-                    message: "download failed"
-                })
-            }
-        }
-        
-        res.download(outputPath, () => {
-                fs.unlink(outputPath, () => {});
-            });
-    })   
-}
-*/
-
-// export default downloadVideoFunction
+      
