@@ -3,7 +3,7 @@ import fs from 'fs';
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import crypto from "crypto"
-import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, chooseFormat, ensureCookiesFile, processes} from "./dependencies.mjs"
+import {getMainDomain, getHeightFromString, selectvideoformat, selectaudioformat, sanname, loopFormatForFormatObject, chooseFormat, ensureCookiesFile, processes, buildYtdlpArgs} from "./dependencies.mjs"
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,7 +84,7 @@ const startDownload = async (req, res) => {
             '--add-header', 'Referer:https://www.google.com/',
             '--add-header', `User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
         ]
-
+        /*
         const ytdlpArg = [
             url,
             '-f', 'bestvideo[ext=mp4][filesize<200M]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[filesize<200M]/best',
@@ -96,7 +96,10 @@ const startDownload = async (req, res) => {
             ...headerArgs,
             '-o', outputPath
         ]
-
+        */
+        const ytdlpArg = buildYtdlpArgs(url, outputPath, cookie, newHeight, defaultHeaders, headerArgs])
+        console.log(ytdlpArg)
+      
         const yt = spawn(ytDlpPath, ytdlpArg, {
             stdio: "pipe",
             cwd: __dirname
