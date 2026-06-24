@@ -23,7 +23,7 @@ const tempPath = path.join(__dirname, "temp")
 if (!fs.existsSync(tempPath)) {
     fs.mkdirSync(tempPath, { recursive: true })
     console.log('Created temp directory:', tempPath)
-}
+};
 
 const tk = new Map()
 
