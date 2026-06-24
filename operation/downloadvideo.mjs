@@ -19,7 +19,6 @@ const ffmpegPath = isWindows
 
 const tempPath = path.join(__dirname, "temp");
 
-// FIX 1: Ensure temp directory exists at startup — yt-dlp fails silently if it doesn't
 if (!fs.existsSync(tempPath)) {
     fs.mkdirSync(tempPath, { recursive: true })
     console.log('Created temp directory:', tempPath)
