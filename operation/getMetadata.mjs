@@ -62,7 +62,7 @@ const metadataExtractor = async (req, res) => {
                 if (isYouTubeUrl(url)) {
                     // FIX 1: extractYoutube is async — use .then/.catch, not try/catch.
                     // FIX 2: Don't pass cookies; android client works without them.
-                    extractYoutube(url)
+                    extractYoutube(url, cookie)
                         .then(resolve)
                         .catch(err => reject(err.message));
                     return; // exit executor — proc setup below is for non-YT only
@@ -157,7 +157,7 @@ const metadataExtractor = async (req, res) => {
     }
 }
 
-function extractYoutube(url) {
+function extractYoutube(url, cookie) {
     // async wrapper removed — function just returns a Promise directly
     url = normalizeYoutubeUrl(url);
 
@@ -169,6 +169,7 @@ function extractYoutube(url) {
             "--force-ipv4",
             "--dump-single-json",
             "--no-warnings",
+            "--cookies", cookie,
             // FIX 2: --js-runtimes is not a valid yt-dlp flag.
             // Use android player client to bypass SABR enforcement — no cookies needed.
             "--extractor-args", "youtube:player_client=android,web",
