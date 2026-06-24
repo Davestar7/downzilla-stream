@@ -17,7 +17,7 @@ const ffmpegPath = isWindows
   ? path.join(__dirname, "ffmpeg-n8.0-7-g4f8b3891ee-win64-lgpl-shared-8.0", "bin", "ffmpeg.exe")
   : "/app/operation/ffmpeg";
 
-const tempPath = path.join(__dirname, "temp")
+const tempPath = path.join(__dirname, "temp");
 
 // FIX 1: Ensure temp directory exists — yt-dlp fails silently without it
 if (!fs.existsSync(tempPath)) {
