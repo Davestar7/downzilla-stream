@@ -230,7 +230,11 @@ async function extractYoutube(url,cookiePath=null){
 
     args.push(url);
 
-    const proc=spawn(ytDlpPath,args,{windowsHide:true});
+     console.log("YT-DLP COMMAND:");
+      console.log(ytDlpPath);
+      console.log(args);
+     
+    const proc= spawn(ytDlpPath,args,{windowsHide:true});
 
     let stdout="";
     let stderr="";
@@ -244,9 +248,7 @@ async function extractYoutube(url,cookiePath=null){
       return reject(new Error(stderr||`yt-dlp exited ${code}`));
      }
 
-      console.log("YT-DLP COMMAND:");
-      console.log(ytDlpPath);
-      console.log(args);
+      
      try{
       resolve(JSON.parse(stdout));
      }catch(e){
