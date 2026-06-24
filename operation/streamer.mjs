@@ -19,6 +19,12 @@ const ffmpegPath = isWindows
 
 const tempPath = path.join(__dirname, "temp")
 
+// FIX 1: Ensure temp directory exists at startup — ffmpeg/yt-dlp fail silently if missing
+if (!fs.existsSync(tempPath)) {
+    fs.mkdirSync(tempPath, { recursive: true })
+    console.log('Created temp directory:', tempPath)
+}
+
 const tk = new Map()
 
 const knowStreamer = (req, res) => {
@@ -97,7 +103,7 @@ const stream = async (req, res) => {
         req.socket.setKeepAlive(true, 3000)
         res.setTimeout(0)
 
-        // Reuse existing file
+        // Reuse existing completed file
         if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
             let entry = processes.get(fileId)
             if (!entry) {
@@ -109,7 +115,7 @@ const stream = async (req, res) => {
             return
         }
 
-        // Reuse in-progress job
+        // Attach to already in-progress job
         let entry = processes.get(fileId)
         if (entry && entry.status === "processing") {
             waitAndStream(req, res, fileId, outputPath)
@@ -119,7 +125,6 @@ const stream = async (req, res) => {
         const isYouTube = url.includes('youtube.com') || url.includes('youtu.be')
 
         if (isYouTube && formats && formats.length > 0) {
-            // Find best video format with a valid string URL
             const videoFormat = formats.find(f =>
                 f.vcodec !== 'none' &&
                 f.acodec === 'none' &&
@@ -131,7 +136,6 @@ const stream = async (req, res) => {
                 f.url && typeof f.url === 'string' && f.url.startsWith('http')
             )
 
-            // Find best audio format with a valid string URL
             const audioFormat = formats.find(f =>
                 f.acodec !== 'none' &&
                 f.vcodec === 'none' &&
@@ -162,18 +166,21 @@ const stream = async (req, res) => {
                     outputPath
                 ]
 
-                console.log('Spawning ffmpeg for YouTube stream')
+                console.log('Spawning ffmpeg for YouTube stream, outputPath:', outputPath)
 
                 const ffmpeg = spawn(ffmpegPath, ffmpegArgs, { stdio: "pipe", cwd: __dirname })
                 processes.get(fileId).yt = ffmpeg
 
+                // Both streams must be consumed — unread pipes block the child process
                 ffmpeg.stderr.on('data', (data) => {
                     console.log('ffmpeg:', data.toString())
                 })
+                ffmpeg.stdout.on('data', () => {})
 
                 ffmpeg.on('close', (code) => {
                     const entry = processes.get(fileId)
                     if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                        console.log('ffmpeg done, file size:', fs.statSync(outputPath).size)
                         if (entry) {
                             entry.status = "done"
                             entry.expiresAt = Date.now() + 30 * 60 * 1000
@@ -181,21 +188,23 @@ const stream = async (req, res) => {
                     } else {
                         console.log('ffmpeg failed with code:', code)
                         if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+                        // FIX 3: Mark failed BEFORE scheduling delete so waitAndStream
+                        // can read the "failed" status. Delete after a short delay.
                         if (entry) {
                             entry.status = "failed"
-                            processes.delete(fileId)
+                            setTimeout(() => processes.delete(fileId), 10000)
                         }
                         tk.delete(sid)
                     }
                 })
 
                 ffmpeg.on('error', (err) => {
-                    console.log('ffmpeg error:', err.message)
+                    console.log('ffmpeg spawn error:', err.message)
                     const entry = processes.get(fileId)
                     if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
                     if (entry) {
                         entry.status = "failed"
-                        processes.delete(fileId)
+                        setTimeout(() => processes.delete(fileId), 10000)
                     }
                     tk.delete(sid)
                 })
@@ -207,7 +216,7 @@ const stream = async (req, res) => {
             console.log('No valid YouTube format URLs found, falling back to yt-dlp')
         }
 
-        // Fallback to yt-dlp for non-YouTube or if no direct URLs
+        // Fallback: yt-dlp for non-YouTube or when no direct CDN URLs are present
         let headerArgs = []
         if (headers && typeof headers === "object") {
             for (const [key, value] of Object.entries(headers)) {
@@ -216,7 +225,14 @@ const stream = async (req, res) => {
         }
 
         const cookie = ensureCookiesFile()
-        const ytdlpArg = [url, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '--cookies', cookie, ...headerArgs, '-o', outputPath]
+        const ytdlpArg = [
+            url,
+            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
+            '--merge-output-format', 'mp4',
+            '--cookies', cookie,
+            ...headerArgs,
+            '-o', outputPath
+        ]
 
         let yt
 
@@ -236,36 +252,46 @@ const stream = async (req, res) => {
 
         } catch (e) {
             tk.delete(sid)
-            return res.status(501).json({ success: false, message: "error trying to download request: " + e })
+            return res.status(501).json({ success: false, message: "error spawning yt-dlp: " + e })
         }
+
+        // FIX 2: Consume yt-dlp stderr — on large files the 64KB pipe buffer fills up,
+        // blocking the child process entirely until the pipe is drained.
+        yt.stderr.on('data', (data) => {
+            console.log('yt-dlp:', data.toString())
+        })
+        yt.stdout.on('data', () => {}) // drain stdout to be safe
 
         yt.on('close', (code) => {
             const entry = processes.get(fileId)
             if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                console.log('yt-dlp done, file size:', fs.statSync(outputPath).size)
                 job.ready = true
                 if (entry) {
                     entry.status = "done"
                     entry.expiresAt = Date.now() + 30 * 60 * 1000
                 }
             } else {
+                console.log('yt-dlp failed with code:', code)
                 job.ready = false
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+                // FIX 3: Same as ffmpeg — mark failed first, delete after delay
                 if (entry) {
                     entry.status = "failed"
-                    processes.delete(fileId)
+                    setTimeout(() => processes.delete(fileId), 10000)
                 }
                 tk.delete(sid)
             }
         })
 
         yt.on('error', (err) => {
-            console.log('yt-dlp error:', err.message)
+            console.log('yt-dlp spawn error:', err.message)
             const entry = processes.get(fileId)
             job.ready = false
             if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
             if (entry) {
                 entry.status = "failed"
-                processes.delete(fileId)
+                setTimeout(() => processes.delete(fileId), 10000)
             }
             tk.delete(sid)
         })
@@ -273,7 +299,7 @@ const stream = async (req, res) => {
         waitAndStream(req, res, fileId, outputPath)
 
     } catch (e) {
-        console.log(e.message)
+        console.log('stream error:', e.message)
         tk.delete(sid)
         if (!res.writableEnded) {
             res.status(500).json({ message: `Error streaming: ${e.message}` })
@@ -317,16 +343,35 @@ function streamFile(req, res, filePath) {
 }
 
 function waitAndStream(req, res, fileId, outputPath) {
+    const startTime = Date.now()
+    const MAX_WAIT_MS = 15 * 60 * 1000 // 15-minute hard cap
+
     const wait = setInterval(() => {
+        // FIX 4: Hard timeout — prevents infinite loop if something goes wrong silently
+        if (Date.now() - startTime > MAX_WAIT_MS) {
+            clearInterval(wait)
+            console.log(`waitAndStream timeout for ${fileId}`)
+            if (!res.writableEnded) res.status(504).json({ success: false, message: "streaming timed out" })
+            return
+        }
+
         const entry = processes.get(fileId)
 
-        if (entry && entry.status === "failed") {
+        // FIX 3b: Handle the case where the entry was deleted before this tick runs
+        // (race between failure handler calling delete and interval firing)
+        if (!entry) {
             clearInterval(wait)
             if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
             return
         }
 
-        if (entry && entry.status === "done" && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+        if (entry.status === "failed") {
+            clearInterval(wait)
+            if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
+            return
+        }
+
+        if (entry.status === "done" && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
             clearInterval(wait)
             entry.expiresAt = Date.now() + 30 * 60 * 1000
             streamFile(req, res, outputPath)
@@ -337,189 +382,5 @@ function waitAndStream(req, res, fileId, outputPath) {
         clearInterval(wait)
     })
 }
-
-
-/*
-const stream = async (req, res) => {
-    const { sid } = req.query
-
-    try {
-        const job = tk.get(sid)
-        
-        let outputPath
-
-        if (job?.yt && job?.outputFile) {
-            if (fs.existsSync(job.outputFile) && fs.statSync(job.outputFile).size > 0) {
-                streamer(job.outputFile)
-                return
-            }
-        }
-
-        const url = job.url
-        const title = job.title
-        const formats = job.formats
-        const height = job.height
-        const headers = job.headers
-
-        let forFormat;
-        let for_id
-        let formatc
-
-        const newHeight = getHeightFromString(height)
-        
-        if (newHeight === null || newHeight < 144 || newHeight > 1080 || typeof newHeight != "number") {    
-            const selected = selectvideoformat(formats)
-            if (selected === null) {
-                return res.status(400).json({
-                    success: false,
-                    message: "streamable format not found"
-                })
-            }
-            
-            formatc = chooseFormat(Number(selected.height))
-        }
-        // const domain = getMainDomain(url)
-        let yt
-        if (!formatc) {
-            formatc = chooseFormat(Number(height))
-        }
-
-        let newtitle = sanname(title).toString().toLowerCase().trim()
-        // const filename = (newtitle || "video") + "_downzilla.mp4"
-        
-        const id = crypto.randomBytes(6).toString('hex');
-        outputPath = path.join(tempPath, `${newtitle.toLowerCase()}-${id}.mp4`);
-
-
-        try {   
-            
-            let headerArgs = []
-            if (headers && typeof headers === "object") {
-                for (const [key, value] of Object.entries(headers)) {
-                    headerArgs.push('--add-header', `${key}: ${value}`);
-                }
-            }
-
-        const cookie = ensureCookiesFile()
-                
-            
-            // const ytdlpArg = [ url, '-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', "--extractor-args", 'youtube:player_client=android', '--cookies', cookie, '--ffmpeg-location', ffmpegPath, ...headerArgs, '-o', outputPath.replace('.mp4', '.%(ext)s')];
-           const ytdlpArg = [url, '--js-runtimes', 'node', '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best', '--merge-output-format', 'mp4', '--extractor-args', 'youtube:player_client=web', '--cookies', cookie, ...headerArgs, '-o', '-'];
-
-            yt = spawn(ytDlpPath, ytdlpArg, {
-                stdio: "pipe",
-                cwd: __dirname
-            })
-            job.outputFile = outputPath
-            job.yt = yt
-        } catch (e) {
-            if (fs.existsSync(job.outputFile)) {
-                fs.unlink(job.outputFile, () => {});
-            }
-            tk.delete(sid)
-            return res.status(501).json({
-                success: false,
-                message: "error trying to download request: " + e
-            })
-        }
-            
-        const heartbeat = setInterval(() => {
-           if (!res.writableEnded) {
-              res.write(Buffer.alloc(0));
-            }
-         }, 3000);
-
-        
-        yt.on('close', (code) => {
-               clearInterval(heartbeat);
-    
-             if (code !== 0) {
-               if (fs.existsSync(outputPath))   fs.unlink(outputPath, () => {});
-              tk.delete(sid);
-              return res.status(500).json({ success: false, message: 'Download failed' });
-         }
-    streamer(outputPath);
-});
-
-        async function streamer(out = null) {
-            try {
-                const realout = out || tk.get(sid).outputFile
-                const stat = fs.statSync(realout)
-                const filesize = stat.size;
-
-                const range = req.headers.range;
-                if (!range) {
-                    res.writeHead(200, {
-                      'Content-Type': 'video/mp4',
-                      'Transfer-Encoding': 'chunked',
-                      'X-Accel-Buffering': 'no'
-                    });
-                    fs.createReadStream(realout).pipe(res)
-                    return
-                }
-
-                const parts = range.replace(/bytes=/, "").split("-")
-                const start = parseInt(parts[0], 10)
-                const end = parts[1] ? parseInt(parts[1], 10) : filesize - 1
-                const chuckSize = end - start + 1
-
-                const streaming = fs.createReadStream(realout, { start, end })
-                res.writeHead(206, {
-                    "Content-Range": `bytes ${start}-${end}/${filesize}`,
-                    "Accept-Range": "bytes",
-                    "Content-Length": chuckSize,
-                    "Content-Type": "video/mp4"
-                });
-
-                await streaming.pipe(res)
-            } catch (e) {
-                tk.delete(sid)
-            }
-        }
-
-        try {
-             await res.on("close", () => {
-                setTimeout(() => {
-                    if (fs.existsSync(job.outputFile)) {
-                        fs.unlink(job.outputFile, () => {});
-                    }
-                    tk.delete(sid)            
-                }, 600000);
-                yt.kill("SIGKILL") 
-        
-            })
-            
-        } catch (e) {
-            tk.delete(sid)
-            yt.kill("SIGKILL")
-            res.status(500).json({
-                message: "ended with server error"
-            })
-        }
-        try {
-            await res.on("finish", () => {
-                setTimeout(() => {
-                    if (fs.existsSync(job.outputFile)) {
-                        fs.unlink(job.outputFile, () => {});
-                    }
-                    tk.delete(sid)            
-                }, 600000);
-                yt.kill("SIGKILL")
-            }) 
-        } catch (e) {
-            tk.delete(sid)
-            yt.kill("SIGKILL")
-            res.status(500).json({
-                message: "seems to be some kind of error"
-            })
-        }
-    } catch (e) {
-        tk.delete(sid)
-        res.status(500).json({
-            message: `Error streaming: ${e.message}`
-        })
-    }
-}
-*/
 
 export {stream, knowStreamer}
