@@ -1,5 +1,5 @@
 import path from "path"
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import { jobs } from "../tracker/track.mjs";
 import { fileURLToPath } from "url";
 import { ensureCookiesFile } from "./dependencies.mjs"
@@ -19,6 +19,8 @@ const ytDlpPath = isWindows
 function isYouTubeUrl(url) {
     return url.includes('youtube.com') || url.includes('youtu.be')
 }
+
+const nodePath = execSync("which node").toString().trim();
 
 function normalizeYoutubeUrl(url){
  try{
@@ -196,8 +198,8 @@ const metadataExtractor = async (req, res) => {
     }
 }
 
-async function extractYoutube(url,cookiePath=null){
- url=normalizeYoutubeUrl(url);
+async function extractYoutube(urls,cookiePath=null){
+ let url = normalizeYoutubeUrl(urls);
 
  const args=[
   "--ignore-config",
