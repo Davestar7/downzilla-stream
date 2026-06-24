@@ -222,135 +222,172 @@ function extractYoutube(url){
 
  url=normalizeYoutubeUrl(url);
 
- return new Promise((resolve,reject)=>{
+ return new Promise(async(resolve,reject)=>{
 
-  const args=[
-   "--ignore-config",
-   "--skip-download",
-   "--dump-single-json",
-   "--no-playlist",
-   "--force-ipv4",
-   "--no-warnings",
-   "--extractor-args","youtube:player_client=web",
-   url
-  ];
+  const clients=["android","web"];
 
-  const proc=spawn(ytDlpPath,args,{
-   windowsHide:true,
-   cwd:"/app/operation",
-   env:{
-    ...process.env,
-    PATH:`/usr/local/bin:/usr/bin:${process.env.PATH}`
-   }
-  });
+  const cookie=ensureCookiesFile();
 
-  let stdout="";
-  let stderr="";
-  let settled=false;
-
-  const finish=(fn,data)=>{
-
-   if(settled){
-    return;
-   }
-
-   settled=true;
-
-   fn(data);
-  };
-
-  const timeout=setTimeout(()=>{
+  for(const client of clients){
 
    try{
 
-    proc.kill("SIGKILL");
+    const result=await runExtractor(client,cookie);
 
-   }catch{}
-
-   finish(
-    reject,
-    new Error("yt-dlp timeout after 60 seconds")
-   );
-
-  },60000);
-
-  proc.stdout.on("data",chunk=>{
-   stdout+=chunk.toString();
-  });
-
-  proc.stderr.on("data",chunk=>{
-   stderr+=chunk.toString();
-  });
-
-  proc.on("error",err=>{
-
-   clearTimeout(timeout);
-
-   finish(reject,err);
-
-  });
-
-  proc.on("close",code=>{
-
-   clearTimeout(timeout);
-
-   if(settled){
-    return;
-   }
-
-   if(code!==0){
-
-    if(/Too Many Requests|429/i.test(stderr)){
-
-     return finish(
-      reject,
-      new Error("YouTube rate limited this server")
-     );
-    }
-
-    if(/Sign in to confirm you're not a bot/i.test(stderr)){
-
-     return finish(
-      reject,
-      new Error("YouTube blocked this server IP")
-     );
-    }
-
-    return finish(
-     reject,
-     new Error(stderr||`yt-dlp exited ${code}`)
-    );
-   }
-
-   try{
-
-    const result=JSON.parse(stdout);
-
-    if(!result?.id){
-
-     return finish(
-      reject,
-      new Error("Invalid metadata")
-     );
-    }
-
-    if(!Array.isArray(result.formats)){
-     result.formats=[];
-    }
-
-    finish(resolve,result);
+    return resolve(result);
 
    }catch(err){
 
+    const message=err.message||String(err);
+
+    if(
+      !/Sign in to confirm you're not a bot/i.test(message) &&
+      !/429|Too Many Requests/i.test(message)
+    ){
+
+      return reject(err);
+    }
+
+   }
+
+  }
+
+  reject(
+   new Error(
+    "YouTube blocked Railway's IP. Try again later or use a valid cookies file."
+   )
+  );
+
+ });
+
+ function runExtractor(client,cookie){
+
+  return new Promise((resolve,reject)=>{
+
+   const args=[
+    "--ignore-config",
+    "--skip-download",
+    "--dump-single-json",
+    "--extract-flat","false",
+    "--no-playlist",
+    "--force-ipv4",
+    "--no-warnings",
+    "--extractor-args",`youtube:player_client=${client}`
+   ];
+
+   if(cookie){
+
+    args.push("--cookies");
+    args.push(cookie);
+
+   }
+
+   args.push(url);
+
+   const proc=spawn(ytDlpPath,args,{
+    windowsHide:true,
+    cwd:"/app/operation",
+    env:{
+     ...process.env,
+     PATH:`/usr/local/bin:/usr/bin:${process.env.PATH}`
+    }
+   });
+
+   let stdout="";
+   let stderr="";
+   let settled=false;
+
+   const finish=(fn,data)=>{
+
+    if(settled)return;
+
+    settled=true;
+
+    fn(data);
+
+   };
+
+   const timeout=setTimeout(()=>{
+
+    try{
+
+     proc.kill("SIGKILL");
+
+    }catch{}
+
     finish(
      reject,
-     new Error(`JSON parse failed: ${err.message}`)
+     new Error("yt-dlp timeout after 60 seconds")
     );
-   }
+
+   },60000);
+
+   proc.stdout.on("data",chunk=>{
+    stdout+=chunk.toString();
+   });
+
+   proc.stderr.on("data",chunk=>{
+    stderr+=chunk.toString();
+   });
+
+   proc.on("error",err=>{
+
+    clearTimeout(timeout);
+
+    finish(reject,err);
+
+   });
+
+   proc.on("close",code=>{
+
+    clearTimeout(timeout);
+
+    if(settled)return;
+
+    if(code!==0){
+
+     return finish(
+      reject,
+      new Error(stderr||`yt-dlp exited ${code}`)
+     );
+
+    }
+
+    try{
+
+     const result=JSON.parse(stdout);
+
+     if(!result?.id){
+
+      return finish(
+       reject,
+       new Error("Invalid metadata")
+      );
+
+     }
+
+     if(!Array.isArray(result.formats)){
+
+      result.formats=[];
+
+     }
+
+     finish(resolve,result);
+
+    }catch(err){
+
+     finish(
+      reject,
+      new Error(`JSON parse failed: ${err.message}`)
+     );
+
+    }
+
+   });
 
   });
 
- });
+ }
 
 }
 
