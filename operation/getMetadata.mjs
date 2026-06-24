@@ -71,7 +71,7 @@ const metadataExtractor=async(req,res)=>{
 
     if(isYouTubeUrl(url)){
 
-     extractYoutube(url)
+     extractYoutube(url,cookie)
       .then(resolve)
       .catch(reject);
 
@@ -168,18 +168,18 @@ const metadataExtractor=async(req,res)=>{
 
     if(code===0){
 
-      try{
+     try{
 
-       resolve(JSON.parse(data));
+      resolve(JSON.parse(data));
 
-      }catch(err){
+     }catch(err){
 
-       reject(err.message);
-      }
+      reject(err.message);
+     }
 
     }else{
 
-     reject(error||`failed with code ${code} possibly cancelled`);
+     reject(error||`failed with code ${code}`);
     }
 
    });
@@ -218,175 +218,150 @@ const metadataExtractor=async(req,res)=>{
 
 };
 
-function extractYoutube(url){
+function extractYoutube(url,cookie){
 
  url=normalizeYoutubeUrl(url);
 
- return new Promise(async(resolve,reject)=>{
+ return new Promise((resolve,reject)=>{
 
-  const clients=["android","web"];
+  const args=[
+   "--ignore-config",
+   "--skip-download",
+   "--dump-single-json",
+   "--no-playlist",
+   "--force-ipv4",
+   "--retries","3",
+   "--no-warnings",
+   "--extractor-args","youtube:player_client=android"
+  ];
 
-  const cookie=ensureCookiesFile();
+  if(cookie){
 
-  for(const client of clients){
-
-   try{
-
-    const result=await runExtractor(client,cookie);
-
-    return resolve(result);
-
-   }catch(err){
-
-    const message=err.message||String(err);
-
-    if(
-      !/Sign in to confirm you're not a bot/i.test(message) &&
-      !/429|Too Many Requests/i.test(message)
-    ){
-
-      return reject(err);
-    }
-
-   }
+   args.push("--cookies");
+   args.push(cookie);
 
   }
 
-  reject(
-   new Error(
-    "YouTube blocked Railway's IP. Try again later or use a valid cookies file."
-   )
-  );
+  args.push(url);
 
- });
+  const proc=spawn(ytDlpPath,args,{
+   windowsHide:true,
+   cwd:"/app/operation",
+   env:{
+    ...process.env,
+    PATH:`/usr/local/bin:/usr/bin:${process.env.PATH}`
+   }
+  });
 
- function runExtractor(client,cookie){
+  let stdout="";
+  let stderr="";
+  let settled=false;
 
-  return new Promise((resolve,reject)=>{
+  const finish=(fn,data)=>{
 
-   const args=[
-    "--ignore-config",
-    "--skip-download",
-    "--dump-single-json",
-    "--no-playlist",
-    "--force-ipv4",
-    "--no-warnings",
-    "--extractor-args",`youtube:player_client=${client}`
-   ];
-
-   if(cookie){
-
-    args.push("--cookies");
-    args.push(cookie);
-
+   if(settled){
+    return;
    }
 
-   args.push(url);
+   settled=true;
 
-   const proc=spawn(ytDlpPath,args,{
-    windowsHide:true,
-    cwd:"/app/operation",
-    env:{
-     ...process.env,
-     PATH:`/usr/local/bin:/usr/bin:${process.env.PATH}`
-    }
-   });
+   fn(data);
+  };
 
-   let stdout="";
-   let stderr="";
-   let settled=false;
+  const timeout=setTimeout(()=>{
 
-   const finish=(fn,data)=>{
+   try{
 
-    if(settled)return;
+    proc.kill("SIGKILL");
 
-    settled=true;
+   }catch{}
 
-    fn(data);
+   finish(
+    reject,
+    new Error("yt-dlp timeout after 60 seconds")
+   );
 
-   };
+  },60000);
 
-   const timeout=setTimeout(()=>{
+  proc.stdout.on("data",chunk=>{
+   stdout+=chunk.toString();
+  });
 
-    try{
+  proc.stderr.on("data",chunk=>{
+   stderr+=chunk.toString();
+  });
 
-     proc.kill("SIGKILL");
+  proc.on("error",err=>{
 
-    }catch{}
+   clearTimeout(timeout);
 
-    finish(
-     reject,
-     new Error("yt-dlp timeout after 60 seconds")
-    );
-
-   },60000);
-
-   proc.stdout.on("data",chunk=>{
-    stdout+=chunk.toString();
-   });
-
-   proc.stderr.on("data",chunk=>{
-    stderr+=chunk.toString();
-   });
-
-   proc.on("error",err=>{
-
-    clearTimeout(timeout);
-
-    finish(reject,err);
-
-   });
-
-   proc.on("close",code=>{
-
-    clearTimeout(timeout);
-
-    if(settled)return;
-
-    if(code!==0){
-
-     return finish(
-      reject,
-      new Error(stderr||`yt-dlp exited ${code}`)
-     );
-
-    }
-
-    try{
-
-     const result=JSON.parse(stdout);
-
-     if(!result?.id){
-
-      return finish(
-       reject,
-       new Error("Invalid metadata")
-      );
-
-     }
-
-     if(!Array.isArray(result.formats)){
-
-      result.formats=[];
-
-     }
-
-     finish(resolve,result);
-
-    }catch(err){
-
-     finish(
-      reject,
-      new Error(`JSON parse failed: ${err.message}`)
-     );
-
-    }
-
-   });
+   finish(reject,err);
 
   });
 
- }
+  proc.on("close",code=>{
+
+   clearTimeout(timeout);
+
+   if(settled){
+    return;
+   }
+
+   if(code!==0){
+
+    if(/Too Many Requests|429/i.test(stderr)){
+
+     return finish(
+      reject,
+      new Error("YouTube rate limited this server")
+     );
+    }
+
+    if(/Sign in to confirm you're not a bot/i.test(stderr)){
+
+     return finish(
+      reject,
+      new Error(
+       "YouTube blocked Railway's IP or the cookies are invalid"
+      )
+     );
+    }
+
+    return finish(
+     reject,
+     new Error(stderr||`yt-dlp exited ${code}`)
+    );
+   }
+
+   try{
+
+    const result=JSON.parse(stdout);
+
+    if(!result?.id){
+
+     return finish(
+      reject,
+      new Error("Invalid metadata")
+     );
+    }
+
+    if(!Array.isArray(result.formats)){
+     result.formats=[];
+    }
+
+    finish(resolve,result);
+
+   }catch(err){
+
+    finish(
+     reject,
+     new Error(`JSON parse failed: ${err.message}`)
+    );
+   }
+
+  });
+
+ });
 
 }
 
