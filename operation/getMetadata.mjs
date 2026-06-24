@@ -183,187 +183,77 @@ const metadataExtractor = async (req, res) => {
     }
 }
 
-async function extractYoutube(url, cookiePath = null) {
+async function extractYoutube(url,cookiePath=null){
+ url=normalizeYoutubeUrl(url);
 
-  const strategies = [
-    {
-      name: "default",
-      args: [
-        "--extractor-args",
-        "youtube:player_skip=webpage"
-      ],
-      useCookie: true
-    },
+ const nodePath=process.execPath;
 
-    {
-      name: "web",
-      args: [
-        "--extractor-args",
-        "youtube:player_client=web"
-      ],
-      useCookie: true
-    },
+ const strategies=[
+  {name:"cookie",useCookie:true},
+  {name:"fallback",useCookie:false}
+ ];
 
-    {
-      name: "mweb",
-      args: [
-        "--extractor-args",
-        "youtube:player_client=mweb"
-      ],
-      useCookie: true
-    },
+ let lastError;
 
-    {
-      name: "no-cookie",
-      args: [],
-      useCookie: false
+ for(const strategy of strategies){
+  try{
+   const result=await new Promise((resolve,reject)=>{
+    const args=[
+     "--ignore-config",
+     "--skip-download",
+     "--no-playlist",
+     "--force-ipv4",
+     "--socket-timeout","20",
+     "--retries","1",
+     "--js-runtimes",`node:${nodePath}`,
+     "-J"
+    ];
+
+    if(strategy.useCookie&&cookiePath){
+     args.push("--cookies",cookiePath);
     }
-  ];
 
-  let lastError;
+    args.push(url);
 
-  for (const strategy of strategies) {
+    const proc=spawn(ytDlpPath,args,{windowsHide:true});
 
-    try {
+    let stdout="";
+    let stderr="";
 
-      const result = await new Promise((resolve, reject) => {
+    proc.stdout.on("data",c=>stdout+=c.toString());
 
-        const args = [
-          "--ignore-config",
+    proc.stderr.on("data",c=>stderr+=c.toString());
 
-          "--skip-download",
+    proc.on("close",code=>{
+     if(code!==0){
+      return reject(new Error(stderr||`yt-dlp exited ${code}`));
+     }
 
-          "--no-playlist",
+     try{
+      resolve(JSON.parse(stdout));
+     }catch(e){
+      reject(new Error(`JSON parse failed: ${e.message}`));
+     }
+    });
 
-          "--force-ipv4",
+    proc.on("error",reject);
+   });
 
-          "--retries", "3",
+   if(result?.title&&result?.id){
+    return result;
+   }
 
-          "--fragment-retries", "3",
+  }catch(e){
+   lastError=e;
+   console.log(`[extractYoutube] ${strategy.name}:`,e.message);
 
-          "--socket-timeout", "20",
-
-          "--js-runtimes", "node",
-
-          ...strategy.args
-        ];
-
-        if (
-          strategy.useCookie &&
-          cookiePath
-        ) {
-          args.push(
-            "--cookies",
-            cookiePath
-          );
-        }
-
-        args.push(
-          "-J",
-          url
-        );
-
-        console.log(
-          "[yt-dlp]",
-          args.join(" ")
-        );
-
-        const proc = spawn(
-          ytDlpPath,
-          args,
-          {
-            windowsHide: true
-          }
-        );
-
-        let stdout = "";
-        let stderr = "";
-
-        const timeout = setTimeout(() => {
-
-          proc.kill("SIGKILL");
-
-          reject(
-            new Error(
-              "Timeout"
-            )
-          );
-
-        }, 30000);
-
-        proc.stdout.on(
-          "data",
-          chunk => {
-            stdout += chunk;
-          }
-        );
-
-        proc.stderr.on(
-          "data",
-          chunk => {
-            stderr += chunk;
-          }
-        );
-
-        proc.on(
-          "error",
-          err => {
-
-            clearTimeout(timeout);
-
-            reject(err);
-
-          }
-        );
-
-        proc.on(
-          "close",
-          code => {
-
-            clearTimeout(timeout);
-
-            console.log(
-              "EXIT:",
-              code
-            );
-
-            console.log(
-              "STDOUT:",
-              stdout
-            );
-
-            console.log(
-              "STDERR:",
-              stderr
-            );
-
-            if (!stdout.trim()) {
-              return reject(new Error( stderr ||`yt-dlp exited ${code}`));
-            }
-
-            try {
-              resolve( JSON.parse( stdout));
-            } catch (e) {
-              reject(new Error(`JSON parse failed: ${e.message}`));
-            }
-          }
-        );
-      });
-
-      if (
-        result?.title &&
-        result?.id
-      ) {
-        return result;
-      }
-    } catch (e) {
-      lastError = e;
-      console.log(`[extractYoutube] ${strategy.name}: ${e.message}`);
-    }
+   if(/429|Too Many Requests/i.test(e.message)){
+    throw new Error("YouTube temporarily rate-limited this server.");
+   }
   }
-  throw new Error(
-    `All extraction strategies failed. Last error: ${lastError?.message}`
-  );
+ }
+
+ throw new Error(lastError?.message||"Extraction failed");
 }
 
 export {metadataExtractor}
