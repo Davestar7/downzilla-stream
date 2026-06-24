@@ -249,24 +249,24 @@ async function extractYoutube(urls,cookiePath=null){
   },30000);
 
   proc.stdout.on("data",chunk=>{
-    console.log("[STDOUT]",d.toString());
+    console.log("[STDOUT] " + d.toString());
    stdout+=chunk.toString();
   });
 
   proc.stderr.on("data",chunk=>{
-    console.log("[STDERR]",d.toString())
+    console.log("[STDERR] " +d.toString())
    stderr+=chunk.toString();
   });
 
   proc.on("error",err=>{
-    console.log("[SPAWN ERROR]",err);
+    console.log("[SPAWN ERROR] " +err);
    clearTimeout(timeout);
 
    finish(reject,err);
   });
 
   proc.on("close",code=>{
-    console.log("[CLOSE]",code)
+    console.log("[CLOSE] "+code)
    clearTimeout(timeout);
 
    if(settled) return;
@@ -279,7 +279,7 @@ async function extractYoutube(urls,cookiePath=null){
    }
 
     proc.on("exit",code=>{
-      console.log("[EXIT]",code);
+      console.log("[EXIT] " + code);
     });
     
 
