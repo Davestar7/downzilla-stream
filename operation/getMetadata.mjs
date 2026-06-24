@@ -183,160 +183,159 @@ const metadataExtractor = async (req, res) => {
     }
 }
 
-function extractYoutube(url, cookiePath = null) {
-  return new Promise(async (resolve, reject) => {
-    const strategies = [
-      {
-        name: "android-web",
-        args: [
-          "--extractor-args",
-          "youtube:player_client=android,web"
-        ],
-        useCookie: true
-      },
-      {
-        name: "android",
-        args: [
-          "--extractor-args",
-          "youtube:player_client=android"
-        ],
-        useCookie: true
-      },
-      {
-        name: "tv",
-        args: [
-          "--extractor-args",
-          "youtube:player_client=tv"
-        ],
-        useCookie: true
-      },
-      {
-        name: "no-client-force",
-        args: [],
-        useCookie: false
-      }
-    ];
+async function extractYoutube(url, cookiePath = null) {
+  const strategies = [
+    {
+      name: "android-web",
+      args: ["--extractor-args", "youtube:player_client=android,web"],
+      useCookie: true
+    },
+    {
+      name: "android",
+      args: ["--extractor-args", "youtube:player_client=android"],
+      useCookie: true
+    },
+    {
+      name: "tv",
+      args: ["--extractor-args", "youtube:player_client=tv"],
+      useCookie: true
+    },
+    {
+      name: "no-client-force",
+      args: [],
+      useCookie: false
+    }
+  ];
 
-    let bestResult = null;
-    let bestScore = 0;
+  let bestResult = null;
+  let bestScore = 0;
+  let lastError = null;
 
-    for (const strategy of strategies) {
-      try {
-        const result = await new Promise((resolveRun, rejectRun) => {
-          const args = [
-            "--ignore-config",
-            "--skip-download",
-            "--no-playlist",
-            "--no-warnings",
-            "--force-ipv4",
-            "--retries",
-            "5",
-            "--fragment-retries",
-            "5",
-            "--socket-timeout",
-            "20",
-            // IMPORTANT: stable format selection
-            "--format",
-            "bv*+ba/b",
-            // JSON output
-            "-J",
-            url,
-            ...strategy.args
-          ];
-          
+  for (const strategy of strategies) {
+    let proc = null;
 
-          // COOKIE HANDLING (FIXED)
-          if (strategy.useCookie && cookiePath) {
-            args.unshift("--cookies", cookiePath);
-          }
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const args = [
+          "--ignore-config",
+          "--skip-download",
+          "--no-playlist",
+          "--no-warnings",
+          "--force-ipv4",
+          "--retries", "2",           // reduced: info extraction doesn't need 5 retries
+          "--fragment-retries", "2",
+          "--socket-timeout", "15",
+          "--format", "bv*+ba/b",
+          "-J",
+          url,
+          ...strategy.args
+        ];
 
-          const proc = spawn(ytDlpPath, args, {
-            windowsHide: true
-          });
-
-          let stdout = "";
-          let stderr = "";
-
-          const timeout = setTimeout(() => {
-            proc.kill("SIGKILL");
-            rejectRun(new Error("yt-dlp timeout"));
-          }, 45000);
-
-          proc.stdout.on("data", (chunk) => {
-            stdout += chunk.toString();
-          });
-
-          proc.stderr.on("data", (chunk) => {
-            stderr += chunk.toString();
-          });
-
-          proc.on("error", (err) => {
-            clearTimeout(timeout);
-            rejectRun(err);
-          });
-
-          proc.on("close", (code) => {
-            clearTimeout(timeout);
-
-            if (code !== 0 && !stdout) {
-              return rejectRun(new Error(stderr || `yt-dlp exited ${code}`));
-            }
-
-            try {
-              // SAFE JSON EXTRACTION (FIXED)
-              const start = stdout.indexOf("{");
-              const end = stdout.lastIndexOf("}");
-
-              if (start === -1 || end === -1) {
-                return rejectRun(new Error("No JSON output from yt-dlp"));
-              }
-
-              const json = stdout.slice(start, end + 1);
-              resolveRun(JSON.parse(json));
-            } catch (e) {
-              rejectRun(new Error("Failed to parse yt-dlp JSON"));
-            }
-          });
-        });
-
-        // SAFETY GUARD
-        if (!result) continue;
-
-        // SCORING SYSTEM (SAFE)
-        let score = 0;
-
-        if (result.title) score += 10;
-        if (result.duration) score += 10;
-        if (result.uploader) score += 10;
-        if (result.description) score += 5;
-        if (result.thumbnails?.length) score += 10;
-        if (result.formats?.length) score += result.formats.length;
-        if (result.subtitles) score += 5;
-        if (result.chapters) score += 5;
-
-        // VALIDATION (FIXED - NOT OVERSTRICT)
-        const valid =
-          result?.title &&
-          result?.id &&
-          result?.formats?.length > 0;
-
-        if (valid) {
-          return resolve(result);
+        // Push cookies to end — more predictable than unshift before all other flags
+        if (strategy.useCookie && cookiePath) {
+          args.push("--cookies", cookiePath);
         }
 
-        if (score > bestScore) {
-          bestScore = score;
-          bestResult = result;
+        proc = spawn(ytDlpPath, args, {
+          windowsHide: true,
+          stdio: "pipe",       // explicit, even though it's the default
+          cwd: __dirname       // consistent with rest of codebase
+        });
+
+        let stdout = "";
+        let stderr = "";
+        
+        let settled = false;
+
+        const settle = (fn, val) => {
+          if (settled) return;
+          settled = true;
+          fn(val);
         };
-      } catch (e) {}
-    }
 
-    if (bestResult) {
-      return resolve(bestResult);
-    }
+        const timeout = setTimeout(() => {
+          console.log(`[extractYoutube] strategy "${strategy.name}" timed out`);
+          if (proc && !proc.killed) proc.kill("SIGKILL");
+          settle(reject, new Error(`Strategy "${strategy.name}" timed out after 30s`));
+        }, 30000);
 
-    reject(new Error("All extraction strategies failed"));
-  });
+        proc.stdout.on("data", (chunk) => {
+          stdout += chunk.toString();
+        });
+
+        proc.stderr.on("data", (chunk) => {
+          stderr += chunk.toString();
+        });
+
+        proc.on("error", (err) => {
+          clearTimeout(timeout);
+          console.log(`[extractYoutube] strategy "${strategy.name}" spawn error:`, err.message);
+          settle(reject, err);
+        });
+
+        proc.on("close", (code) => {
+          clearTimeout(timeout);
+          if (settled) return;
+
+          if (code !== 0 && !stdout) {
+            return settle(reject, new Error(stderr?.trim() || `yt-dlp exited with code ${code}`));
+          }
+
+          try {
+            const start = stdout.indexOf("{");
+            const end = stdout.lastIndexOf("}");
+
+            if (start === -1 || end === -1) {
+              return settle(reject, new Error("No JSON in yt-dlp output"));
+            }
+
+            const json = stdout.slice(start, end + 1);
+            settle(resolve, JSON.parse(json));
+          } catch (e) {
+            settle(reject, new Error("Failed to parse yt-dlp JSON: " + e.message));
+          }
+        });
+      });
+
+      if (!result) continue;
+
+      let score = 0;
+      if (result.title) score += 10;
+      if (result.duration) score += 10;
+      if (result.uploader) score += 10;
+      if (result.description) score += 5;
+      if (result.thumbnails?.length) score += 10;
+      if (result.formats?.length) score += result.formats.length;
+      if (result.subtitles) score += 5;
+      if (result.chapters) score += 5;
+
+      const valid = result?.title && result?.id && result?.formats?.length > 0;
+
+      if (valid) {
+        console.log(`[extractYoutube] strategy "${strategy.name}" succeeded — ${result.formats.length} formats`);
+        return result;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestResult = result;
+      }
+
+    } catch (e) {
+      lastError = e;
+      console.log(`[extractYoutube] strategy "${strategy.name}" failed:`, e.message);
+      if (proc && !proc.killed) {
+        try { proc.kill("SIGKILL"); } catch (_) {}
+      }
+    }
+  }
+
+  if (bestResult) {
+    console.log(`[extractYoutube] all strategies exhausted — returning best partial result (score: ${bestScore})`);
+    return bestResult;
+  }
+
+  throw new Error(`All extraction strategies failed. Last error: ${lastError?.message ?? "unknown"}`);
 }
 
 export {metadataExtractor}
