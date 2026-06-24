@@ -17,7 +17,7 @@ const ytDlpPath = isWindows
   : "/app/operation/yt-dlp";
 
 function isYouTubeUrl(url) {
-    return url.includes('youtube.com') || url.includes('youtu.be')
+    return url.includes('youtube.com') || url.includes('youtu.be');
 }
 
 const nodePath = execSync("which node").toString().trim();
