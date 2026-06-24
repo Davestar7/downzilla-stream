@@ -20,6 +20,19 @@ function isYouTubeUrl(url) {
     return url.includes('youtube.com') || url.includes('youtu.be')
 }
 
+function normalizeYoutubeUrl(url){
+ try{
+  const u=new URL(url);
+  if(u.hostname==="youtu.be"){
+   return `https://www.youtube.com/watch?v=${u.pathname.slice(1)}`;
+  }
+  u.searchParams.delete("si");
+  return u.toString();
+ }catch{
+  return url;
+ }
+}
+
 /*
 let bgutilStarted = false
 
