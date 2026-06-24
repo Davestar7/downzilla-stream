@@ -20,7 +20,6 @@ function isYouTubeUrl(url) {
     return url.includes('youtube.com') || url.includes('youtu.be')
 }
 
-// Start bgutil POT server once at startup
 /*
 let bgutilStarted = false
 
