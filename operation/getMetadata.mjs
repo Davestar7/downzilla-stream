@@ -10,8 +10,8 @@ const __dirname = path.dirname(__filename);
 const isWindows = process.platform === "win32";
 
 const ytDlpPath = isWindows
-  ? path.join(__dirname, "bin", "yt-dlp.exe")
-  : "/app/operation/yt-dlp";
+    ? path.join(__dirname, "bin", "yt-dlp.exe")
+    : "/app/operation/yt-dlp";
 
 function isYouTubeUrl(url) {
     return url.includes('youtube.com') || url.includes('youtu.be');
@@ -57,17 +57,15 @@ const metadataExtractor = async (req, res) => {
             let proc
 
             if (type === "video") {
-                let argss
 
                 if (isYouTubeUrl(url)) {
-                    // FIX 1: extractYoutube is async — use .then/.catch, not try/catch.
-                    // FIX 2: Don't pass cookies; android client works without them.
-                    extractYoutube(url, cookie)
+                    // YouTube: android client — no cookies passed (see extractYoutube for why)
+                    extractYoutube(url)
                         .then(resolve)
                         .catch(err => reject(err.message));
-                    return; // exit executor — proc setup below is for non-YT only
+                    return;
                 } else {
-                    argss = [
+                    const argss = [
                         '--cookies', cookie,
                         '--no-warnings',
                         '--skip-download',
@@ -157,8 +155,21 @@ const metadataExtractor = async (req, res) => {
     }
 }
 
-function extractYoutube(url, cookie) {
-    // async wrapper removed — function just returns a Promise directly
+/**
+ * Extracts YouTube metadata using the android player client.
+ *
+ * Why no --cookies:
+ *   yt-dlp >= 2026.06.09 hard-blocks the android client whenever --cookies is
+ *   present, forcing a silent fallback to the web client. The web client then
+ *   hits YouTube's n-challenge (nsig) which requires a JS runtime — unavailable
+ *   on Railway — and returns zero formats. The android client works without
+ *   cookies and bypasses the n-challenge entirely.
+ *
+ * Why no web fallback in player_client:
+ *   player_client=android,web re-introduces the web path as a fallback,
+ *   which fails for the same nsig reason above. android alone is sufficient.
+ */
+function extractYoutube(url) {
     url = normalizeYoutubeUrl(url);
 
     return new Promise((resolve, reject) => {
@@ -169,23 +180,21 @@ function extractYoutube(url, cookie) {
             "--force-ipv4",
             "--dump-single-json",
             "--no-warnings",
-            "--cookies", cookie,
-            // FIX 2: --js-runtimes is not a valid yt-dlp flag.
-            // Use android player client to bypass SABR enforcement — no cookies needed.
-            "--extractor-args", "youtube:player_client=android,web",
+            "--no-cache-dir",
+            "--no-check-certificate",
+            "--socket-timeout", "30",
+            "--retries", "3",
+            // android client: no cookies needed, no JS runtime needed
+            "--extractor-args", "youtube:player_client=android",
         ];
-
-        // Intentionally no --cookies here: android client works without them
-        // and cookies can trigger bot-detection on the web client path.
 
         args.push(url);
 
         console.log("[YT-DLP]", ytDlpPath, args.join(" "));
 
         const proc = spawn(ytDlpPath, args, {
+            stdio: ["ignore", "pipe", "pipe"],
             windowsHide: true,
-            // FIX 3: match the non-YT path — set cwd and augment PATH so
-            // yt-dlp can find Python/ffmpeg on Render.
             cwd: '/app/operation',
             env: {
                 ...process.env,
@@ -197,19 +206,24 @@ function extractYoutube(url, cookie) {
         let stderr = "";
         let settled = false;
 
-        const finish = (fn, data) => {
+        const finish = (fn, val) => {
             if (settled) return;
             settled = true;
-            fn(data);
+            fn(val);
         };
 
         const timeout = setTimeout(() => {
             try { proc.kill("SIGKILL"); } catch (_) {}
-            finish(reject, new Error("yt-dlp timeout after 60 seconds"));
+            finish(reject, new Error("yt-dlp timed out after 60 seconds"));
         }, 60000);
 
         proc.stdout.on("data", chunk => { stdout += chunk.toString(); });
-        proc.stderr.on("data", chunk => { stderr += chunk.toString(); });
+
+        proc.stderr.on("data", chunk => {
+            const line = chunk.toString();
+            console.error("[YT STDERR]", line.trimEnd());
+            stderr += line;
+        });
 
         proc.on("error", err => {
             clearTimeout(timeout);
@@ -221,20 +235,38 @@ function extractYoutube(url, cookie) {
             if (settled) return;
 
             if (code !== 0) {
+                // Specific, actionable messages for known failure modes
                 if (/Too Many Requests|429/i.test(stderr)) {
-                    return finish(reject, new Error("YouTube rate limited this server"));
+                    return finish(reject, new Error("YouTube rate-limited this server — try again shortly"));
                 }
                 if (/Sign in to confirm you're not a bot/i.test(stderr)) {
-                    return finish(reject, new Error("YouTube blocked this server IP"));
+                    return finish(reject, new Error("YouTube is blocking this server IP"));
                 }
-                return finish(reject, new Error(stderr || `yt-dlp exited ${code}`));
+                if (/n-challenge|nsig/i.test(stderr)) {
+                    return finish(reject, new Error("YouTube n-challenge failed — no JS runtime; ensure android-only client"));
+                }
+                if (/Requested format is not available/i.test(stderr)) {
+                    return finish(reject, new Error("No formats available — player client may be blocked"));
+                }
+                if (/android.*blocked|blocked.*android/i.test(stderr)) {
+                    return finish(reject, new Error("Android client blocked by YouTube — cookies may still be leaking in"));
+                }
+                if (/Video unavailable/i.test(stderr)) {
+                    return finish(reject, new Error("Video unavailable (private, deleted, or geo-restricted)"));
+                }
+                return finish(reject, new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
             }
 
             try {
                 const result = JSON.parse(stdout);
+
                 if (!result?.id) {
-                    return finish(reject, new Error("Invalid metadata"));
+                    return finish(reject, new Error("Metadata invalid: missing video id"));
                 }
+                if (!result.formats || result.formats.length === 0) {
+                    return finish(reject, new Error("Metadata returned with zero formats — android client may be blocked"));
+                }
+
                 finish(resolve, result);
             } catch (err) {
                 finish(reject, new Error(`JSON parse failed: ${err.message}`));
@@ -244,3 +276,4 @@ function extractYoutube(url, cookie) {
 }
 
 export { metadataExtractor }
+          
