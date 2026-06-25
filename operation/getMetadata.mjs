@@ -188,6 +188,7 @@ function extractYoutube(url, cookie) {
             "--cookies", cookie,
             // ios: no nsig required, cookies accepted, no android-block regression
             "--extractor-args", "youtube:player_client=ios",
+            "--ignore-no-formats-error"
         ];
 
         args.push(url);
