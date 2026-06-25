@@ -186,9 +186,15 @@ function extractYoutube(url, cookie) {
             "--socket-timeout", "30",
             "--retries", "3",
             "--cookies", cookie,
-            // ios: no nsig required, cookies accepted, no android-block regression
-            "--extractor-args", "youtube:player_client=ios",
-            "--ignore-no-formats-error"
+            // Client order rationale (2026.06.09):
+            //   android_testsuite — android variant with a different app fingerprint/clientId;
+            //     not subject to the 2026.06.09 "hard-block android when cookies present"
+            //     regression, returns full DASH adaptive streams, no nsig required.
+            //   ios — fallback; returns combined HLS streams if android_testsuite fails.
+            //     HLS formats don't have separate video+audio, so --ignore-no-formats-error
+            //     is needed to prevent the bestvideo+bestaudio selector aborting output.
+            "--ignore-no-formats-error",
+            "--extractor-args", "youtube:player_client=android_testsuite,ios",
         ];
 
         args.push(url);
@@ -263,7 +269,7 @@ function extractYoutube(url, cookie) {
                     return finish(reject, new Error("Metadata invalid: missing video id"));
                 }
                 if (!result.formats || result.formats.length === 0) {
-                    return finish(reject, new Error("Metadata returned with zero formats — player client may be blocked or fallen back to web"));
+                    return finish(reject, new Error("YouTube returned no formats — server IP may be throttled, try again shortly"));
                 }
 
                 finish(resolve, result);
