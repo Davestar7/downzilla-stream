@@ -59,8 +59,10 @@ const metadataExtractor = async (req, res) => {
             if (type === "video") {
 
                 if (isYouTubeUrl(url)) {
-                    // YouTube: android client — no cookies passed (see extractYoutube for why)
-                    extractYoutube(url)
+                    // Pass cookie: Railway's IP is flagged so YouTube requires auth.
+                    // ios client: bypasses nsig like android, but is NOT subject to
+                    // yt-dlp 2026.06.09's "hard-block android when cookies present" regression.
+                    extractYoutube(url, cookie)
                         .then(resolve)
                         .catch(err => reject(err.message));
                     return;
@@ -156,20 +158,19 @@ const metadataExtractor = async (req, res) => {
 }
 
 /**
- * Extracts YouTube metadata using the android player client.
+ * Extracts YouTube metadata.
  *
- * Why no --cookies:
- *   yt-dlp >= 2026.06.09 hard-blocks the android client whenever --cookies is
- *   present, forcing a silent fallback to the web client. The web client then
- *   hits YouTube's n-challenge (nsig) which requires a JS runtime — unavailable
- *   on Railway — and returns zero formats. The android client works without
- *   cookies and bypasses the n-challenge entirely.
+ * Client choice rationale (2026.06.09):
+ *   - web client:     needs JS runtime for nsig/n-challenge → unavailable on Railway → FAILS
+ *   - android client: bypasses nsig, BUT yt-dlp 2026.06.09 hard-blocks it when
+ *                     --cookies is present, forcing a silent fallback to web → FAILS
+ *   - ios client:     also bypasses nsig; not subject to the android cookie-block
+ *                     regression → WORKS with cookies on a flagged Railway IP
  *
- * Why no web fallback in player_client:
- *   player_client=android,web re-introduces the web path as a fallback,
- *   which fails for the same nsig reason above. android alone is sufficient.
+ * Cookies are required because Railway's IP is flagged by YouTube (bot detection).
+ * Without them YouTube returns "Sign in to confirm you're not a bot".
  */
-function extractYoutube(url) {
+function extractYoutube(url, cookie) {
     url = normalizeYoutubeUrl(url);
 
     return new Promise((resolve, reject) => {
@@ -184,8 +185,9 @@ function extractYoutube(url) {
             "--no-check-certificate",
             "--socket-timeout", "30",
             "--retries", "3",
-            // android client: no cookies needed, no JS runtime needed
-            "--extractor-args", "youtube:player_client=android",
+            "--cookies", cookie,
+            // ios: no nsig required, cookies accepted, no android-block regression
+            "--extractor-args", "youtube:player_client=ios",
         ];
 
         args.push(url);
@@ -235,21 +237,17 @@ function extractYoutube(url) {
             if (settled) return;
 
             if (code !== 0) {
-                // Specific, actionable messages for known failure modes
                 if (/Too Many Requests|429/i.test(stderr)) {
                     return finish(reject, new Error("YouTube rate-limited this server — try again shortly"));
                 }
                 if (/Sign in to confirm you're not a bot/i.test(stderr)) {
-                    return finish(reject, new Error("YouTube is blocking this server IP"));
+                    return finish(reject, new Error("YouTube bot-detection triggered — cookies may be missing or expired"));
                 }
                 if (/n-challenge|nsig/i.test(stderr)) {
-                    return finish(reject, new Error("YouTube n-challenge failed — no JS runtime; ensure android-only client"));
+                    return finish(reject, new Error("YouTube n-challenge failed — web client is being used instead of ios, check player_client arg"));
                 }
                 if (/Requested format is not available/i.test(stderr)) {
                     return finish(reject, new Error("No formats available — player client may be blocked"));
-                }
-                if (/android.*blocked|blocked.*android/i.test(stderr)) {
-                    return finish(reject, new Error("Android client blocked by YouTube — cookies may still be leaking in"));
                 }
                 if (/Video unavailable/i.test(stderr)) {
                     return finish(reject, new Error("Video unavailable (private, deleted, or geo-restricted)"));
@@ -264,7 +262,7 @@ function extractYoutube(url) {
                     return finish(reject, new Error("Metadata invalid: missing video id"));
                 }
                 if (!result.formats || result.formats.length === 0) {
-                    return finish(reject, new Error("Metadata returned with zero formats — android client may be blocked"));
+                    return finish(reject, new Error("Metadata returned with zero formats — player client may be blocked or fallen back to web"));
                 }
 
                 finish(resolve, result);
@@ -276,4 +274,3 @@ function extractYoutube(url) {
 }
 
 export { metadataExtractor }
-          
