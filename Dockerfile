@@ -1,29 +1,30 @@
-FROM node:20-bullseye-slim
+FROM node:20-bullseye
 
-# System deps: python3 + ffmpeg
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 ffmpeg curl ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+# Install system deps (python3, pip, ffmpeg, git, curl)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    ffmpeg \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install node deps first (better layer caching)
+# Download yt-dlp standalone binary
+RUN mkdir -p /app/operation && \
+    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp && \
+    chmod a+rx /app/operation/yt-dlp
+
+# Install node deps (copy package files first for layer caching)
 COPY package*.json ./
 RUN npm install
 
-# Copy rest of app
+# Copy rest of the app
 COPY . .
 
-# Download yt-dlp binary
-RUN mkdir -p /app/operation && \
-    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /app/operation/yt-dlp && \
-    chmod a+rx /app/operation/yt-dlp
-
-# Verify (optional, shows in build logs)
-RUN echo "Python: $(python3 --version)" && \
-    echo "yt-dlp: $(/app/operation/yt-dlp --version)" && \
-    echo "ffmpeg: $(ffmpeg -version | head -n1)" && \
-    echo "node: $(node --version)"
+RUN /app/operation/yt-dlp --version
 
 EXPOSE 3000
-CMD ["node", "stream.mjs"]
+
+CMD ["node", "index.js"]
