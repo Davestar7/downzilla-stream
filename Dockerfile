@@ -1,4 +1,4 @@
-FROM node:20-bullseye
+FROM node:20-bookworm
 
 # Install system deps (python3, pip, ffmpeg, git, curl)
 RUN apt-get update && apt-get install -y \
