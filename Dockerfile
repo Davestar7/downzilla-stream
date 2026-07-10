@@ -27,4 +27,4 @@ RUN /app/operation/yt-dlp --version
 
 EXPOSE 3000
 
-CMD ["node", "index.js"]
+CMD ["node", "stream.mjs"]
