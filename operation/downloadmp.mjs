@@ -128,7 +128,7 @@ const startAudioDownload = async (req, res) => {
     } catch (e) {
         console.log(e);
         if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {});
-        res.status(500).json({ success: false, message: e.message });
+        res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` });
     }
 }
 
@@ -157,7 +157,7 @@ const confirmAudioDownload = async (req, res) => {
 
     } catch (e) {
         console.log(e);
-        res.status(500).json({ success: false, message: e.message });
+        res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` });
     }
 }
 
@@ -190,7 +190,7 @@ const serveAudioDownload = async (req, res) => {
 
     } catch (e) {
         console.log(e);
-        res.status(500).json({ success: false, message: e.message });
+        res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` });
     }
 }
 
