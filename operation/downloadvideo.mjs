@@ -139,7 +139,6 @@ const startDownload = async (req, res) => {
 
         // FIX 3: Capture the err argument — previously swallowed silently
         yt.on("error", (err) => {
-            console.log('yt-dlp spawn error:', err.message)
             const job = processes.get(fileId)
             if (job) {
                 job.status = "failed"
@@ -149,7 +148,7 @@ const startDownload = async (req, res) => {
 
     } catch (e) {
         res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` })
-}
+    }
 
 
 const confirmDownload = async (req, res) => {
@@ -252,5 +251,4 @@ const serveDownload = async (req, res) => {
     }
 }
 
-
-export { startDownload, confirmDownload, serveDownload };
+export { startDownload, confirmDownload, serveDownload }
