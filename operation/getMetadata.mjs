@@ -153,7 +153,7 @@ const metadataExtractor = async (req, res) => {
 
     } catch (e) {
         jobs.delete(id)
-        res.status(500).json({ message: e.message })
+        res.status(500).json({ message: `${e.message}, apologies 😣 fix in progress` })
     }
 }
 
@@ -198,8 +198,6 @@ function extractYoutube(url, cookie) {
         ];
 
         args.push(url);
-
-        console.log("[YT-DLP]", ytDlpPath, args.join(" "));
 
         const proc = spawn(ytDlpPath, args, {
             stdio: ["ignore", "pipe", "pipe"],
@@ -274,7 +272,7 @@ function extractYoutube(url, cookie) {
 
                 finish(resolve, result);
             } catch (err) {
-                finish(reject, new Error(`JSON parse failed: ${err.message}`));
+                finish(reject, new Error(`JSON parse failed: ${err.message}, 😣 fix in progress`));
             }
         });
     });
