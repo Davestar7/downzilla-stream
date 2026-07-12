@@ -148,8 +148,7 @@ const startDownload = async (req, res) => {
         })
 
     } catch (e) {
-        res.status(500).json({ success: false, message: e.message })
-    }
+        res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` })
 }
 
 
@@ -183,7 +182,7 @@ const confirmDownload = async (req, res) => {
 
     } catch (e) {
         console.log(e)
-        res.status(500).json({ success: false, message: e.message })
+        res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` })
     }
 }
 
@@ -249,7 +248,7 @@ const serveDownload = async (req, res) => {
 
     } catch (e) {
         console.log(e)
-        res.status(500).json({ success: false, message: e.message })
+        res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` })
     }
 }
 
