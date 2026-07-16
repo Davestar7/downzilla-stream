@@ -186,16 +186,8 @@ function extractYoutube(url, cookie) {
             "--socket-timeout", "30",
             "--retries", "3",
             "--cookies", cookie,
-            // Client order rationale (2026.06.09):
-            //   android_testsuite — android variant with a different app fingerprint/clientId;
-            //     not subject to the 2026.06.09 "hard-block android when cookies present"
-            //     regression, returns full DASH adaptive streams, no nsig required.
-            //   ios — fallback; returns combined HLS streams if android_testsuite fails.
-            //     HLS formats don't have separate video+audio, so --ignore-no-formats-error
-            //     is needed to prevent the bestvideo+bestaudio selector aborting output.
             "--ignore-no-formats-error",
             "--js-runtimes", "node",
-           //"--extractor-args", "youtube:player_client=ios,tv",
         ];
 
         args.push(url);
@@ -250,7 +242,7 @@ function extractYoutube(url, cookie) {
                     return finish(reject, new Error("YouTube bot-detection triggered — cookies may be missing or expired"));
                 }
                 if (/n-challenge|nsig/i.test(stderr)) {
-                    return finish(reject, new Error("YouTube n-challenge failed — web client is being used instead of ios, check player_client arg"));
+                    return finish(reject, new Error("YouTube n-challenge failed — check player_client arg"));
                 }
                 if (/Requested format is not available/i.test(stderr)) {
                     return finish(reject, new Error("No formats available — player client may be blocked"));
@@ -267,8 +259,19 @@ function extractYoutube(url, cookie) {
                 if (!result?.id) {
                     return finish(reject, new Error("Metadata invalid: missing video id"));
                 }
-                if (!result.formats || result.formats.length === 0) {
-                    return finish(reject, new Error("YouTube returned no formats — server IP may be throttled, try again shortly"));
+
+                // Some clients (SABR-forced, tv_downgraded, etc.) return an empty
+                // top-level `formats` array even though the video is fully playable —
+                // the actual stream data lives in `url`, `requested_formats`, or
+                // `requested_downloads` instead. Only reject if NONE of these exist.
+                const hasFormats = Array.isArray(result.formats) && result.formats.length > 0;
+                const hasDirectUrl = typeof result.url === "string" && result.url.length > 0;
+                const hasRequestedFormats = Array.isArray(result.requested_formats) && result.requested_formats.length > 0;
+                const hasRequestedDownloads = Array.isArray(result.requested_downloads) && result.requested_downloads.length > 0;
+
+                if (!hasFormats && !hasDirectUrl && !hasRequestedFormats && !hasRequestedDownloads) {
+                    const detail = stderr.trim() ? ` | yt-dlp warnings: ${stderr.trim().slice(0, 500)}` : "";
+                    return finish(reject, new Error(`YouTube returned no usable stream data${detail}`));
                 }
 
                 finish(resolve, result);
