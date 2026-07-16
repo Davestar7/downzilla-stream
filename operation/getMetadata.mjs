@@ -195,7 +195,7 @@ function extractYoutube(url, cookie) {
             //     is needed to prevent the bestvideo+bestaudio selector aborting output.
             "--ignore-no-formats-error",
             "--js-runtimes", "node",
-           "--extractor-args", "youtube:player_client=ios,tv",
+           //"--extractor-args", "youtube:player_client=ios,tv",
         ];
 
         args.push(url);
