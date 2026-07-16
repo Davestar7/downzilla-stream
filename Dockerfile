@@ -11,11 +11,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Download yt-dlp standalone binary
+# Add a build arg that changes each time you want a fresh yt-dlp binary
+ARG YTDLP_CACHE_BUST=1
+
 RUN mkdir -p /app/operation && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp && \
     chmod a+rx /app/operation/yt-dlp
-
 # Install node deps (copy package files first for layer caching)
 COPY package*.json ./
 RUN npm install
