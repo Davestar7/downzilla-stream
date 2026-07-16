@@ -194,7 +194,8 @@ function extractYoutube(url, cookie) {
             //     HLS formats don't have separate video+audio, so --ignore-no-formats-error
             //     is needed to prevent the bestvideo+bestaudio selector aborting output.
             "--ignore-no-formats-error",
-            "--extractor-args", "youtube:player_client=android_testsuite,ios",
+            "--js-runtimes", "node",
+           "--extractor-args", "youtube:player_client=ios,tv",
         ];
 
         args.push(url);
