@@ -231,52 +231,130 @@ function extractYoutube(url, cookie) {
         });
 
         proc.on("close", code => {
+    clearTimeout(timeout);
+    if (settled) return;
+
+    if (code !== 0) {
+        if (/Too Many Requests|429/i.test(stderr)) {
+            return finish(reject, new Error("YouTube rate-limited this server — try again shortly"));
+        }
+        if (/Sign in to confirm you're not a bot/i.test(stderr)) {
+            return finish(reject, new Error("YouTube bot-detection triggered — cookies may be missing or expired"));
+        }
+        if (/n-challenge|nsig/i.test(stderr)) {
+            return finish(reject, new Error("YouTube n-challenge failed — check player_client arg"));
+        }
+        if (/Requested format is not available/i.test(stderr)) {
+            return finish(reject, new Error("No formats available — player client may be blocked"));
+        }
+        if (/Video unavailable/i.test(stderr)) {
+            return finish(reject, new Error("Video unavailable (private, deleted, or geo-restricted)"));
+        }
+        return finish(reject, new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+    }
+
+    try {
+        const result = JSON.parse(stdout);
+
+        if (!result?.id) {
+            return finish(reject, new Error("Metadata invalid: missing video id"));
+        }
+
+        const hasFormats = Array.isArray(result.formats) && result.formats.length > 0;
+        const hasDirectUrl = typeof result.url === "string" && result.url.length > 0;
+        const hasRequestedFormats = Array.isArray(result.requested_formats) && result.requested_formats.length > 0;
+        const hasRequestedDownloads = Array.isArray(result.requested_downloads) && result.requested_downloads.length > 0;
+
+        if (!hasFormats && !hasDirectUrl && !hasRequestedFormats && !hasRequestedDownloads) {
+            const detail = stderr.trim() ? ` | yt-dlp warnings: ${stderr.trim().slice(0, 500)}` : "";
+            return finish(reject, new Error(`YouTube returned no usable stream data${detail}`));
+        }
+
+        // Some clients return incomplete basic metadata (missing duration,
+        // thumbnails) even though stream data is fine. Patch gaps with a
+        // cheap fallback call to the oEmbed-style web_safari client, which
+        // reliably returns basic video info even when it can't get formats.
+        const missingDuration = !result.duration && !result.duration_string;
+        const missingThumbnails = !Array.isArray(result.thumbnails) || result.thumbnails.length === 0;
+
+        if (missingDuration || missingThumbnails) {
+            fetchBasicMetadataFallback(url, cookie)
+                .then(fallback => {
+                    if (missingDuration && fallback?.duration) {
+                        result.duration = fallback.duration;
+                        result.duration_string = fallback.duration_string;
+                    }
+                    if (missingThumbnails && Array.isArray(fallback?.thumbnails) && fallback.thumbnails.length > 0) {
+                        result.thumbnails = fallback.thumbnails;
+                        result.thumbnail = fallback.thumbnail || result.thumbnail;
+                    }
+                    finish(resolve, result);
+                })
+                .catch(() => {
+                    // Fallback failed — still return what we have rather than blocking the whole request
+                    finish(resolve, result);
+                });
+            return;
+        }
+
+        finish(resolve, result);
+    } catch (err) {
+        finish(reject, new Error(`JSON parse failed: ${err.message}, 😣 fix in progress`));
+    }
+});
+        });
+    });
+}
+
+// Lightweight second call used only to patch missing duration/thumbnails.
+// Uses web_safari, which reliably returns basic metadata even for videos
+// where the primary client's formats extraction is thin.
+function fetchBasicMetadataFallback(url, cookie) {
+    return new Promise((resolve, reject) => {
+        const args = [
+            "--ignore-config",
+            "--skip-download",
+            "--no-playlist",
+            "--force-ipv4",
+            "--dump-single-json",
+            "--no-warnings",
+            "--no-cache-dir",
+            "--no-check-certificate",
+            "--socket-timeout", "15",
+            "--retries", "2",
+            "--cookies", cookie,
+            "--extractor-args", "youtube:player_client=web_safari;player_skip=configs,webpage",
+            url
+        ];
+
+        const proc = spawn(ytDlpPath, args, {
+            stdio: ["ignore", "pipe", "pipe"],
+            windowsHide: true,
+            cwd: '/app/operation',
+            env: { ...process.env, PATH: `/usr/local/bin:/usr/bin:${process.env.PATH}` }
+        });
+
+        let stdout = "";
+        const timeout = setTimeout(() => {
+            try { proc.kill("SIGKILL"); } catch (_) {}
+            reject(new Error("fallback metadata call timed out"));
+        }, 20000);
+
+        proc.stdout.on("data", chunk => { stdout += chunk.toString(); });
+        proc.stderr.on("data", () => {}); // ignore, this is best-effort only
+
+        proc.on("error", err => {
             clearTimeout(timeout);
-            if (settled) return;
+            reject(err);
+        });
 
-            if (code !== 0) {
-                if (/Too Many Requests|429/i.test(stderr)) {
-                    return finish(reject, new Error("YouTube rate-limited this server — try again shortly"));
-                }
-                if (/Sign in to confirm you're not a bot/i.test(stderr)) {
-                    return finish(reject, new Error("YouTube bot-detection triggered — cookies may be missing or expired"));
-                }
-                if (/n-challenge|nsig/i.test(stderr)) {
-                    return finish(reject, new Error("YouTube n-challenge failed — check player_client arg"));
-                }
-                if (/Requested format is not available/i.test(stderr)) {
-                    return finish(reject, new Error("No formats available — player client may be blocked"));
-                }
-                if (/Video unavailable/i.test(stderr)) {
-                    return finish(reject, new Error("Video unavailable (private, deleted, or geo-restricted)"));
-                }
-                return finish(reject, new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
-            }
-
+        proc.on("close", code => {
+            clearTimeout(timeout);
+            if (code !== 0) return reject(new Error(`fallback exited with code ${code}`));
             try {
-                const result = JSON.parse(stdout);
-
-                if (!result?.id) {
-                    return finish(reject, new Error("Metadata invalid: missing video id"));
-                }
-
-                // Some clients (SABR-forced, tv_downgraded, etc.) return an empty
-                // top-level `formats` array even though the video is fully playable —
-                // the actual stream data lives in `url`, `requested_formats`, or
-                // `requested_downloads` instead. Only reject if NONE of these exist.
-                const hasFormats = Array.isArray(result.formats) && result.formats.length > 0;
-                const hasDirectUrl = typeof result.url === "string" && result.url.length > 0;
-                const hasRequestedFormats = Array.isArray(result.requested_formats) && result.requested_formats.length > 0;
-                const hasRequestedDownloads = Array.isArray(result.requested_downloads) && result.requested_downloads.length > 0;
-
-                if (!hasFormats && !hasDirectUrl && !hasRequestedFormats && !hasRequestedDownloads) {
-                    const detail = stderr.trim() ? ` | yt-dlp warnings: ${stderr.trim().slice(0, 500)}` : "";
-                    return finish(reject, new Error(`YouTube returned no usable stream data${detail}`));
-                }
-
-                finish(resolve, result);
+                resolve(JSON.parse(stdout));
             } catch (err) {
-                finish(reject, new Error(`JSON parse failed: ${err.message}, 😣 fix in progress`));
+                reject(err);
             }
         });
     });
