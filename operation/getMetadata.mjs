@@ -59,9 +59,6 @@ const metadataExtractor = async (req, res) => {
             if (type === "video") {
 
                 if (isYouTubeUrl(url)) {
-                    // Pass cookie: Railway's IP is flagged so YouTube requires auth.
-                    // ios client: bypasses nsig like android, but is NOT subject to
-                    // yt-dlp 2026.06.09's "hard-block android when cookies present" regression.
                     extractYoutube(url, cookie)
                         .then(resolve)
                         .catch(err => reject(err.message));
@@ -159,16 +156,6 @@ const metadataExtractor = async (req, res) => {
 
 /**
  * Extracts YouTube metadata.
- *
- * Client choice rationale (2026.06.09):
- *   - web client:     needs JS runtime for nsig/n-challenge → unavailable on Railway → FAILS
- *   - android client: bypasses nsig, BUT yt-dlp 2026.06.09 hard-blocks it when
- *                     --cookies is present, forcing a silent fallback to web → FAILS
- *   - ios client:     also bypasses nsig; not subject to the android cookie-block
- *                     regression → WORKS with cookies on a flagged Railway IP
- *
- * Cookies are required because Railway's IP is flagged by YouTube (bot detection).
- * Without them YouTube returns "Sign in to confirm you're not a bot".
  */
 function extractYoutube(url, cookie) {
     url = normalizeYoutubeUrl(url);
@@ -231,77 +218,81 @@ function extractYoutube(url, cookie) {
         });
 
         proc.on("close", code => {
-    clearTimeout(timeout);
-    if (settled) return;
+            clearTimeout(timeout);
+            if (settled) return;
 
-    if (code !== 0) {
-        if (/Too Many Requests|429/i.test(stderr)) {
-            return finish(reject, new Error("YouTube rate-limited this server — try again shortly"));
-        }
-        if (/Sign in to confirm you're not a bot/i.test(stderr)) {
-            return finish(reject, new Error("YouTube bot-detection triggered — cookies may be missing or expired"));
-        }
-        if (/n-challenge|nsig/i.test(stderr)) {
-            return finish(reject, new Error("YouTube n-challenge failed — check player_client arg"));
-        }
-        if (/Requested format is not available/i.test(stderr)) {
-            return finish(reject, new Error("No formats available — player client may be blocked"));
-        }
-        if (/Video unavailable/i.test(stderr)) {
-            return finish(reject, new Error("Video unavailable (private, deleted, or geo-restricted)"));
-        }
-        return finish(reject, new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
-    }
+            if (code !== 0) {
+                if (/Too Many Requests|429/i.test(stderr)) {
+                    return finish(reject, new Error("YouTube rate-limited this server — try again shortly"));
+                }
+                if (/Sign in to confirm you're not a bot/i.test(stderr)) {
+                    return finish(reject, new Error("YouTube bot-detection triggered — cookies may be missing or expired"));
+                }
+                if (/n-challenge|nsig/i.test(stderr)) {
+                    return finish(reject, new Error("YouTube n-challenge failed — check player_client arg"));
+                }
+                if (/Requested format is not available/i.test(stderr)) {
+                    return finish(reject, new Error("No formats available — player client may be blocked"));
+                }
+                if (/Video unavailable/i.test(stderr)) {
+                    return finish(reject, new Error("Video unavailable (private, deleted, or geo-restricted)"));
+                }
+                return finish(reject, new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+            }
 
-    try {
-        const result = JSON.parse(stdout);
+            try {
+                const result = JSON.parse(stdout);
 
-        if (!result?.id) {
-            return finish(reject, new Error("Metadata invalid: missing video id"));
-        }
+                if (!result?.id) {
+                    return finish(reject, new Error("Metadata invalid: missing video id"));
+                }
 
-        const hasFormats = Array.isArray(result.formats) && result.formats.length > 0;
-        const hasDirectUrl = typeof result.url === "string" && result.url.length > 0;
-        const hasRequestedFormats = Array.isArray(result.requested_formats) && result.requested_formats.length > 0;
-        const hasRequestedDownloads = Array.isArray(result.requested_downloads) && result.requested_downloads.length > 0;
+                const hasFormats = Array.isArray(result.formats) && result.formats.length > 0;
+                const hasDirectUrl = typeof result.url === "string" && result.url.length > 0;
+                const hasRequestedFormats = Array.isArray(result.requested_formats) && result.requested_formats.length > 0;
+                const hasRequestedDownloads = Array.isArray(result.requested_downloads) && result.requested_downloads.length > 0;
 
-        if (!hasFormats && !hasDirectUrl && !hasRequestedFormats && !hasRequestedDownloads) {
-            const detail = stderr.trim() ? ` | yt-dlp warnings: ${stderr.trim().slice(0, 500)}` : "";
-            return finish(reject, new Error(`YouTube returned no usable stream data${detail}`));
-        }
+                if (!hasFormats && !hasDirectUrl && !hasRequestedFormats && !hasRequestedDownloads) {
+                    const detail = stderr.trim() ? ` | yt-dlp warnings: ${stderr.trim().slice(0, 500)}` : "";
+                    return finish(reject, new Error(`YouTube returned no usable stream data${detail}`));
+                }
 
-        // Some clients return incomplete basic metadata (missing duration,
-        // thumbnails) even though stream data is fine. Patch gaps with a
-        // cheap fallback call to the oEmbed-style web_safari client, which
-        // reliably returns basic video info even when it can't get formats.
-        const missingDuration = !result.duration && !result.duration_string;
-        const missingThumbnails = !Array.isArray(result.thumbnails) || result.thumbnails.length === 0;
+                // DEBUG: log exactly what keys came back so we can see whether
+                // duration/thumbnails are truly absent or just shaped differently.
+                console.log("[METADATA KEYS]", Object.keys(result).sort().join(", "));
+                console.log("[METADATA duration]", result.duration, "| duration_string:", result.duration_string);
+                console.log("[METADATA thumbnails]", Array.isArray(result.thumbnails) ? `array(${result.thumbnails.length})` : typeof result.thumbnails);
 
-        if (missingDuration || missingThumbnails) {
-            fetchBasicMetadataFallback(url, cookie)
-                .then(fallback => {
-                    if (missingDuration && fallback?.duration) {
-                        result.duration = fallback.duration;
-                        result.duration_string = fallback.duration_string;
-                    }
-                    if (missingThumbnails && Array.isArray(fallback?.thumbnails) && fallback.thumbnails.length > 0) {
-                        result.thumbnails = fallback.thumbnails;
-                        result.thumbnail = fallback.thumbnail || result.thumbnail;
-                    }
-                    finish(resolve, result);
-                })
-                .catch(() => {
-                    // Fallback failed — still return what we have rather than blocking the whole request
-                    finish(resolve, result);
-                });
-            return;
-        }
+                const missingDuration = !result.duration && !result.duration_string;
+                const missingThumbnails = !Array.isArray(result.thumbnails) || result.thumbnails.length === 0;
 
-        finish(resolve, result);
-    } catch (err) {
-        finish(reject, new Error(`JSON parse failed: ${err.message}, 😣 fix in progress`));
-    }
-});
+                if (missingDuration || missingThumbnails) {
+                    fetchBasicMetadataFallback(url, cookie)
+                        .then(fallback => {
+                            console.log("[METADATA FALLBACK OK] duration:", fallback?.duration, "| thumbnails:", Array.isArray(fallback?.thumbnails) ? fallback.thumbnails.length : typeof fallback?.thumbnails);
+                            if (missingDuration && fallback?.duration) {
+                                result.duration = fallback.duration;
+                                result.duration_string = fallback.duration_string;
+                            }
+                            if (missingThumbnails && Array.isArray(fallback?.thumbnails) && fallback.thumbnails.length > 0) {
+                                result.thumbnails = fallback.thumbnails;
+                                result.thumbnail = fallback.thumbnail || result.thumbnail;
+                            }
+                            finish(resolve, result);
+                        })
+                        .catch(err => {
+                            // Was previously silent — now logged so failures are visible.
+                            console.error("[METADATA FALLBACK FAILED]", err?.message || err);
+                            finish(resolve, result);
+                        });
+                    return;
+                }
+
+                finish(resolve, result);
+            } catch (err) {
+                finish(reject, new Error(`JSON parse failed: ${err.message}, 😣 fix in progress`));
+            }
+        });
     });
 }
 
@@ -334,13 +325,14 @@ function fetchBasicMetadataFallback(url, cookie) {
         });
 
         let stdout = "";
+        let stderr = "";
         const timeout = setTimeout(() => {
             try { proc.kill("SIGKILL"); } catch (_) {}
             reject(new Error("fallback metadata call timed out"));
         }, 20000);
 
         proc.stdout.on("data", chunk => { stdout += chunk.toString(); });
-        proc.stderr.on("data", () => {}); // ignore, this is best-effort only
+        proc.stderr.on("data", chunk => { stderr += chunk.toString(); });
 
         proc.on("error", err => {
             clearTimeout(timeout);
@@ -349,7 +341,7 @@ function fetchBasicMetadataFallback(url, cookie) {
 
         proc.on("close", code => {
             clearTimeout(timeout);
-            if (code !== 0) return reject(new Error(`fallback exited with code ${code}`));
+            if (code !== 0) return reject(new Error(stderr.trim() || `fallback exited with code ${code}`));
             try {
                 resolve(JSON.parse(stdout));
             } catch (err) {
