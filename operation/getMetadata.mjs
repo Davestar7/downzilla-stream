@@ -302,7 +302,6 @@ function extractYoutube(url, cookie) {
         finish(reject, new Error(`JSON parse failed: ${err.message}, 😣 fix in progress`));
     }
 });
-        });
     });
 }
 
