@@ -263,6 +263,17 @@ function extractYoutube(url, cookie) {
                 console.log("[METADATA duration]", result.duration, "| duration_string:", result.duration_string);
                 console.log("[METADATA thumbnails]", Array.isArray(result.thumbnails) ? `array(${result.thumbnails.length})` : typeof result.thumbnails);
 
+                // Before hitting the network again, check if any format entry
+                // already carries a duration (common even when top-level duration
+                // is stripped by certain clients).
+                if (!result.duration && Array.isArray(result.formats)) {
+                    const formatWithDuration = result.formats.find(f => f && f.duration);
+                    if (formatWithDuration) {
+                        result.duration = formatWithDuration.duration;
+                        console.log("[METADATA duration recovered from formats]", result.duration);
+                    }
+                }
+
                 const missingDuration = !result.duration && !result.duration_string;
                 const missingThumbnails = !Array.isArray(result.thumbnails) || result.thumbnails.length === 0;
 
@@ -313,7 +324,7 @@ function fetchBasicMetadataFallback(url, cookie) {
             "--socket-timeout", "15",
             "--retries", "2",
             "--cookies", cookie,
-            "--extractor-args", "youtube:player_client=web_safari;player_skip=configs,webpage",
+            "--js-runtimes", "node",
             url
         ];
 
@@ -352,3 +363,4 @@ function fetchBasicMetadataFallback(url, cookie) {
 }
 
 export { metadataExtractor }
+                
