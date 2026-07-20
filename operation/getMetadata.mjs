@@ -35,14 +35,22 @@ function normalizeYoutubeUrl(url) {
 const metadataExtractor = async (req, res) => {
     const { time = null, id, arg } = req.body
 
+    // ENTRY LOG — this MUST appear for every single request that reaches
+    // this function. If this line is ever missing from the logs, the
+    // request isn't reaching this handler at all (routing/middleware issue).
+    console.log("[METADATA REQUEST]", "id:", id, "time:", time);
+
     const theJob = jobs.get(id);
 
     if (!theJob) {
+        console.log("[METADATA] job not found for id:", id, "— returning 404");
         return res.status(404).json({ message: "id not found" })
     }
 
     const url = theJob.url
     const type = theJob.type
+
+    console.log("[METADATA] job found — url:", url, "| type:", type, "| isYouTubeUrl:", isYouTubeUrl(url || ""));
 
     try {
         const cookie = ensureCookiesFile()
@@ -59,11 +67,13 @@ const metadataExtractor = async (req, res) => {
             if (type === "video") {
 
                 if (isYouTubeUrl(url)) {
+                    console.log("[METADATA] routing to extractYoutube()");
                     extractYoutube(url, cookie)
                         .then(resolve)
                         .catch(err => reject(err.message));
                     return;
                 } else {
+                    console.log("[METADATA] routing to GENERIC (non-YouTube) extraction branch — this branch does NOT log YT STDERR/METADATA details");
                     const argss = [
                         '--cookies', cookie,
                         '--no-warnings',
@@ -86,10 +96,13 @@ const metadataExtractor = async (req, res) => {
                 }
 
             } else if (type === "playlist") {
+                console.log("[METADATA] routing to playlist branch");
                 proc = spawn(ytDlpPath, argument, { stdio: ["ignore", "pipe", "pipe"] })
             } else if (type === "audio") {
+                console.log("[METADATA] routing to audio branch");
                 proc = spawn(ytDlpPath, argument, { stdio: ["ignore", "pipe", "pipe"] })
             } else {
+                console.log("[METADATA] unknown type:", type, "— rejecting");
                 return reject("selected option not available")
             }
 
@@ -120,15 +133,19 @@ const metadataExtractor = async (req, res) => {
             })
 
             proc.stderr.on("data", (chunk) => {
-                console.error('YTDLP STDERR:', chunk.toString())
+                console.error('[GENERIC BRANCH STDERR]:', chunk.toString())
                 error += chunk.toString()
             })
 
             proc.on("close", (code) => {
                 if (time != null) clearTimeout(timeout)
+                console.log("[GENERIC BRANCH] closed with code:", code);
                 if (code === 0) {
                     try {
-                        resolve(JSON.parse(data))
+                        const parsed = JSON.parse(data);
+                        console.log("[GENERIC BRANCH KEYS]", Object.keys(parsed).sort().join(", "));
+                        console.log("[GENERIC BRANCH duration]", parsed.duration, "| thumbnails:", Array.isArray(parsed.thumbnails) ? `array(${parsed.thumbnails.length})` : typeof parsed.thumbnails);
+                        resolve(parsed)
                     } catch (err) {
                         reject(err.message)
                     }
@@ -143,12 +160,14 @@ const metadataExtractor = async (req, res) => {
             jobs.delete(id)
             res.status(200).json({ data: out })
         } catch (e) {
+            console.error("[METADATA] extraction failed:", e);
             theJob.state = "failed"
             jobs.delete(id)
             res.status(400).json({ message: e })
         }
 
     } catch (e) {
+        console.error("[METADATA] outer catch — unexpected error:", e);
         jobs.delete(id)
         res.status(500).json({ message: `${e.message}, apologies 😣 fix in progress` })
     }
@@ -159,6 +178,7 @@ const metadataExtractor = async (req, res) => {
  */
 function extractYoutube(url, cookie) {
     url = normalizeYoutubeUrl(url);
+    console.log("[extractYoutube] starting for normalized url:", url);
 
     return new Promise((resolve, reject) => {
         const args = [
@@ -213,11 +233,13 @@ function extractYoutube(url, cookie) {
         });
 
         proc.on("error", err => {
+            console.error("[extractYoutube] spawn error:", err.message);
             clearTimeout(timeout);
             finish(reject, err);
         });
 
         proc.on("close", code => {
+            console.log("[extractYoutube] process closed with code:", code);
             clearTimeout(timeout);
             if (settled) return;
 
@@ -257,15 +279,11 @@ function extractYoutube(url, cookie) {
                     return finish(reject, new Error(`YouTube returned no usable stream data${detail}`));
                 }
 
-                // DEBUG: log exactly what keys came back so we can see whether
-                // duration/thumbnails are truly absent or just shaped differently.
                 console.log("[METADATA KEYS]", Object.keys(result).sort().join(", "));
                 console.log("[METADATA duration]", result.duration, "| duration_string:", result.duration_string);
                 console.log("[METADATA thumbnails]", Array.isArray(result.thumbnails) ? `array(${result.thumbnails.length})` : typeof result.thumbnails);
+                console.log("[METADATA formats count]", Array.isArray(result.formats) ? result.formats.length : typeof result.formats);
 
-                // Before hitting the network again, check if any format entry
-                // already carries a duration (common even when top-level duration
-                // is stripped by certain clients).
                 if (!result.duration && Array.isArray(result.formats)) {
                     const formatWithDuration = result.formats.find(f => f && f.duration);
                     if (formatWithDuration) {
@@ -278,6 +296,7 @@ function extractYoutube(url, cookie) {
                 const missingThumbnails = !Array.isArray(result.thumbnails) || result.thumbnails.length === 0;
 
                 if (missingDuration || missingThumbnails) {
+                    console.log("[METADATA] triggering fallback — missingDuration:", missingDuration, "missingThumbnails:", missingThumbnails);
                     fetchBasicMetadataFallback(url, cookie)
                         .then(fallback => {
                             console.log("[METADATA FALLBACK OK] duration:", fallback?.duration, "| thumbnails:", Array.isArray(fallback?.thumbnails) ? fallback.thumbnails.length : typeof fallback?.thumbnails);
@@ -292,7 +311,6 @@ function extractYoutube(url, cookie) {
                             finish(resolve, result);
                         })
                         .catch(err => {
-                            // Was previously silent — now logged so failures are visible.
                             console.error("[METADATA FALLBACK FAILED]", err?.message || err);
                             finish(resolve, result);
                         });
@@ -307,10 +325,8 @@ function extractYoutube(url, cookie) {
     });
 }
 
-// Lightweight second call used only to patch missing duration/thumbnails.
-// Uses web_safari, which reliably returns basic metadata even for videos
-// where the primary client's formats extraction is thin.
 function fetchBasicMetadataFallback(url, cookie) {
+    console.log("[fetchBasicMetadataFallback] starting for:", url);
     return new Promise((resolve, reject) => {
         const args = [
             "--ignore-config",
@@ -343,7 +359,10 @@ function fetchBasicMetadataFallback(url, cookie) {
         }, 20000);
 
         proc.stdout.on("data", chunk => { stdout += chunk.toString(); });
-        proc.stderr.on("data", chunk => { stderr += chunk.toString(); });
+        proc.stderr.on("data", chunk => {
+            console.error("[FALLBACK STDERR]", chunk.toString().trim());
+            stderr += chunk.toString();
+        });
 
         proc.on("error", err => {
             clearTimeout(timeout);
@@ -351,6 +370,7 @@ function fetchBasicMetadataFallback(url, cookie) {
         });
 
         proc.on("close", code => {
+            console.log("[fetchBasicMetadataFallback] closed with code:", code);
             clearTimeout(timeout);
             if (code !== 0) return reject(new Error(stderr.trim() || `fallback exited with code ${code}`));
             try {
