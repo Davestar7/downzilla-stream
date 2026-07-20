@@ -238,7 +238,7 @@ function extractYoutube(url, cookie) {
             finish(reject, err);
         });
 
-        proc.on("close", code => {
+        proc.on("close", async code => {
             console.log("[extractYoutube] process closed with code:", code);
             clearTimeout(timeout);
             if (settled) return;
@@ -284,11 +284,45 @@ function extractYoutube(url, cookie) {
                 console.log("[METADATA thumbnails]", Array.isArray(result.thumbnails) ? `array(${result.thumbnails.length})` : typeof result.thumbnails);
                 console.log("[METADATA formats count]", Array.isArray(result.formats) ? result.formats.length : typeof result.formats);
 
-                if (!result.duration && Array.isArray(result.formats)) {
-                    const formatWithDuration = result.formats.find(f => f && f.duration);
-                    if (formatWithDuration) {
-                        result.duration = formatWithDuration.duration;
-                        console.log("[METADATA duration recovered from formats]", result.duration);
+                // Check every place yt-dlp might have stashed a duration value —
+                // different clients put it in different spots, or omit the
+                // top-level field entirely.
+                if (!result.duration) {
+                    const candidates = [
+                        ...(Array.isArray(result.formats) ? result.formats : []),
+                        ...(Array.isArray(result.requested_formats) ? result.requested_formats : []),
+                        ...(Array.isArray(result.requested_downloads) ? result.requested_downloads : []),
+                    ];
+                    const withDuration = candidates.find(f => f && f.duration);
+                    if (withDuration) {
+                        result.duration = withDuration.duration;
+                        console.log("[METADATA duration recovered from format entry]", result.duration);
+                    }
+                }
+
+                // Last resort: probe the actual media stream directly with
+                // ffprobe. This is independent of yt-dlp's client/JSON shape —
+                // if there's a playable URL, ffprobe reads the real duration
+                // straight from the container.
+                if (!result.duration) {
+                    const probeUrl =
+                        result.url ||
+                        result.requested_downloads?.[0]?.url ||
+                        result.requested_formats?.[0]?.url ||
+                        (Array.isArray(result.formats) && result.formats.length > 0
+                            ? result.formats[result.formats.length - 1]?.url
+                            : null);
+
+                    if (probeUrl) {
+                        try {
+                            const probed = await ffprobeDuration(probeUrl);
+                            if (probed) {
+                                result.duration = probed;
+                                console.log("[METADATA duration recovered via ffprobe]", probed);
+                            }
+                        } catch (probeErr) {
+                            console.error("[ffprobe duration failed]", probeErr.message);
+                        }
                     }
                 }
 
@@ -320,6 +354,51 @@ function extractYoutube(url, cookie) {
                 finish(resolve, result);
             } catch (err) {
                 finish(reject, new Error(`JSON parse failed: ${err.message}, 😣 fix in progress`));
+            }
+        });
+    });
+}
+
+// Reads duration directly from the media stream/container using ffprobe,
+// independent of whatever fields yt-dlp's chosen client did or didn't
+// include in its JSON output. Requires ffmpeg/ffprobe to be installed
+// (already present via apt-get in the Dockerfile).
+function ffprobeDuration(mediaUrl) {
+    return new Promise((resolve, reject) => {
+        const ffprobePath = isWindows ? "ffprobe.exe" : "ffprobe";
+        const args = [
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            mediaUrl
+        ];
+
+        const proc = spawn(ffprobePath, args, { stdio: ["ignore", "pipe", "pipe"] });
+
+        let stdout = "";
+        let stderr = "";
+        const timeout = setTimeout(() => {
+            try { proc.kill("SIGKILL"); } catch (_) {}
+            reject(new Error("ffprobe timed out"));
+        }, 15000);
+
+        proc.stdout.on("data", chunk => { stdout += chunk.toString(); });
+        proc.stderr.on("data", chunk => { stderr += chunk.toString(); });
+
+        proc.on("error", err => {
+            clearTimeout(timeout);
+            reject(err);
+        });
+
+        proc.on("close", code => {
+            clearTimeout(timeout);
+            if (code !== 0) return reject(new Error(stderr.trim() || `ffprobe exited with code ${code}`));
+            try {
+                const parsed = JSON.parse(stdout);
+                const seconds = parsed?.format?.duration ? Math.round(parseFloat(parsed.format.duration)) : null;
+                resolve(seconds);
+            } catch (err) {
+                reject(err);
             }
         });
     });
@@ -383,4 +462,3 @@ function fetchBasicMetadataFallback(url, cookie) {
 }
 
 export { metadataExtractor }
-                
