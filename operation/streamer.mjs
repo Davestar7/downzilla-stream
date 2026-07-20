@@ -28,38 +28,47 @@ if (!fs.existsSync(tempPath)) {
 const tk = new Map()
 
 const knowStreamer = (req, res) => {
-    const { url, title, formats = null, height = null, headers = null, vid } = req.body
+    try {
+        const { url, title, formats = null, height = null, headers = null, vid } = req.body
 
-    if (!url || !title) {
-        return res.status(400).json({
+        if (!url || !title) {
+            return res.status(400).json({
+                success: false,
+                message: "failed incomplete data"
+            })
+        }
+
+        let header = headers
+        if (!header) {
+            // FIX: formats can be null/undefined — indexing it directly throws
+            header = formats?.[0]?.http_headers
+        }
+
+        const id = crypto.randomUUID()
+
+        tk.set(id, {
+            state: "Active",
+            url: url,
+            title: title,
+            formats: formats,
+            height: height,
+            headers: header,
+            yt: null,
+            outputFile: null,
+            vid: vid
+        })
+
+        res.status(201).json({
+            success: true,
+            data: id
+        })
+    } catch (e) {
+        console.log('knowStreamer error:', e.message)
+        res.status(500).json({
             success: false,
-            message: "failed incomplete data"
+            message: "failed to start streaming session: " + e.message
         })
     }
-
-    let header = headers
-    if (!header) {
-        header = formats[0]?.http_headers
-    }
-
-    const id = crypto.randomUUID()
-
-    tk.set(id, {
-        state: "Active",
-        url: url,
-        title: title,
-        formats: formats,
-        height: height,
-        headers: header,
-        yt: null,
-        outputFile: null,
-        vid: vid
-    })
-
-    res.status(201).json({
-        success: true,
-        data: id
-    })
 }
 
 const stream = async (req, res) => {
@@ -168,8 +177,22 @@ const stream = async (req, res) => {
 
                 console.log('Spawning ffmpeg for YouTube stream, outputPath:', outputPath)
 
-                const ffmpeg = spawn(ffmpegPath, ffmpegArgs, { stdio: "pipe", cwd: __dirname })
-                processes.get(fileId).yt = ffmpeg
+                let ffmpeg
+                try {
+                    ffmpeg = spawn(ffmpegPath, ffmpegArgs, { stdio: "pipe", cwd: __dirname })
+                    processes.get(fileId).yt = ffmpeg
+                } catch (e) {
+                    // FIX: spawn can throw synchronously (e.g. bad binary path) — without
+                    // this the request would hang since waitAndStream would poll forever
+                    console.log('ffmpeg spawn threw synchronously:', e.message)
+                    if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+                    processes.delete(fileId)
+                    tk.delete(sid)
+                    if (!res.writableEnded) {
+                        res.status(500).json({ success: false, message: "error spawning ffmpeg: " + e.message })
+                    }
+                    return
+                }
 
                 // Both streams must be consumed — unread pipes block the child process
                 ffmpeg.stderr.on('data', (data) => {
@@ -302,7 +325,7 @@ const stream = async (req, res) => {
         console.log('stream error:', e.message)
         tk.delete(sid)
         if (!res.writableEnded) {
-            res.status(500).json({ message: `Error streaming: ${e.message}` })
+            res.status(500).json({ success: false, message: `Error streaming: ${e.message}` })
         }
     }
 }
@@ -347,34 +370,44 @@ function waitAndStream(req, res, fileId, outputPath) {
     const MAX_WAIT_MS = 15 * 60 * 1000 // 15-minute hard cap
 
     const wait = setInterval(() => {
-        // FIX 4: Hard timeout — prevents infinite loop if something goes wrong silently
-        if (Date.now() - startTime > MAX_WAIT_MS) {
-            clearInterval(wait)
-            console.log(`waitAndStream timeout for ${fileId}`)
-            if (!res.writableEnded) res.status(504).json({ success: false, message: "streaming timed out" })
-            return
-        }
+        try {
+            // FIX 4: Hard timeout — prevents infinite loop if something goes wrong silently
+            if (Date.now() - startTime > MAX_WAIT_MS) {
+                clearInterval(wait)
+                console.log(`waitAndStream timeout for ${fileId}`)
+                if (!res.writableEnded) res.status(504).json({ success: false, message: "streaming timed out" })
+                return
+            }
 
-        const entry = processes.get(fileId)
+            const entry = processes.get(fileId)
 
-        // FIX 3b: Handle the case where the entry was deleted before this tick runs
-        // (race between failure handler calling delete and interval firing)
-        if (!entry) {
-            clearInterval(wait)
-            if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
-            return
-        }
+            // FIX 3b: Handle the case where the entry was deleted before this tick runs
+            // (race between failure handler calling delete and interval firing)
+            if (!entry) {
+                clearInterval(wait)
+                if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
+                return
+            }
 
-        if (entry.status === "failed") {
-            clearInterval(wait)
-            if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
-            return
-        }
+            if (entry.status === "failed") {
+                clearInterval(wait)
+                if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed" })
+                return
+            }
 
-        if (entry.status === "done" && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            if (entry.status === "done" && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+                clearInterval(wait)
+                entry.expiresAt = Date.now() + 30 * 60 * 1000
+                streamFile(req, res, outputPath)
+            }
+        } catch (e) {
+            // FIX 5: fs.statSync can throw on a race (file deleted between existsSync and
+            // statSync). Without this try/catch, an exception here happens inside a
+            // setInterval callback — Express can't catch it, so it would crash the
+            // process instead of giving the frontend a usable error response.
             clearInterval(wait)
-            entry.expiresAt = Date.now() + 30 * 60 * 1000
-            streamFile(req, res, outputPath)
+            console.log('waitAndStream poll error:', e.message)
+            if (!res.writableEnded) res.status(500).json({ success: false, message: "streaming failed: " + e.message })
         }
     }, 1000)
 
@@ -384,3 +417,4 @@ function waitAndStream(req, res, fileId, outputPath) {
 }
 
 export {stream, knowStreamer}
+              
