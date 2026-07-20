@@ -302,16 +302,22 @@ function extractYoutube(url, cookie) {
 
                 // Last resort: probe the actual media stream directly with
                 // ffprobe. This is independent of yt-dlp's client/JSON shape —
-                // if there's a playable URL, ffprobe reads the real duration
-                // straight from the container.
+                // if there's a playable URL OR HLS/DASH manifest URL, ffprobe
+                // reads the real duration straight from it.
                 if (!result.duration) {
-                    const probeUrl =
-                        result.url ||
-                        result.requested_downloads?.[0]?.url ||
-                        result.requested_formats?.[0]?.url ||
-                        (Array.isArray(result.formats) && result.formats.length > 0
-                            ? result.formats[result.formats.length - 1]?.url
-                            : null);
+                    const candidateObjects = [
+                        result,
+                        ...(Array.isArray(result.requested_downloads) ? result.requested_downloads : []),
+                        ...(Array.isArray(result.requested_formats) ? result.requested_formats : []),
+                        ...(Array.isArray(result.formats) ? [...result.formats].reverse() : []),
+                    ];
+                    let probeUrl = null;
+                    for (const obj of candidateObjects) {
+                        if (obj?.url) { probeUrl = obj.url; break; }
+                        if (obj?.manifest_url) { probeUrl = obj.manifest_url; break; }
+                    }
+
+                    console.log("[METADATA] ffprobe candidate url:", probeUrl ? "found" : "none found");
 
                     if (probeUrl) {
                         try {
@@ -326,11 +332,21 @@ function extractYoutube(url, cookie) {
                     }
                 }
 
+                // NOTE: the network fallback below now only fires for missing
+                // THUMBNAILS. A second live yt-dlp call to YouTube purely to
+                // chase duration was triggering "Sign in to confirm you're
+                // not a bot" on rapid repeat requests from the same cookie/IP —
+                // so if duration is still unavailable after the checks above,
+                // we accept that gracefully rather than risk that failure mode.
                 const missingDuration = !result.duration && !result.duration_string;
                 const missingThumbnails = !Array.isArray(result.thumbnails) || result.thumbnails.length === 0;
 
-                if (missingDuration || missingThumbnails) {
-                    console.log("[METADATA] triggering fallback — missingDuration:", missingDuration, "missingThumbnails:", missingThumbnails);
+                if (missingDuration) {
+                    console.log("[METADATA] duration unavailable after all recovery attempts — proceeding without it");
+                }
+
+                if (missingThumbnails) {
+                    console.log("[METADATA] triggering fallback for missing thumbnails only");
                     fetchBasicMetadataFallback(url, cookie)
                         .then(fallback => {
                             console.log("[METADATA FALLBACK OK] duration:", fallback?.duration, "| thumbnails:", Array.isArray(fallback?.thumbnails) ? fallback.thumbnails.length : typeof fallback?.thumbnails);
@@ -338,7 +354,7 @@ function extractYoutube(url, cookie) {
                                 result.duration = fallback.duration;
                                 result.duration_string = fallback.duration_string;
                             }
-                            if (missingThumbnails && Array.isArray(fallback?.thumbnails) && fallback.thumbnails.length > 0) {
+                            if (Array.isArray(fallback?.thumbnails) && fallback.thumbnails.length > 0) {
                                 result.thumbnails = fallback.thumbnails;
                                 result.thumbnail = fallback.thumbnail || result.thumbnail;
                             }
