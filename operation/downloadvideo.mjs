@@ -86,7 +86,14 @@ const startDownload = async (req, res) => {
             }
         }
 
-        const defaultHeaders = [
+        // Forcing a custom Referer/User-Agent on YouTube requests conflicts
+        // with the real browser fingerprint the cookies were exported from —
+        // replaying a logged-in session's cookies under a different device
+        // fingerprint is a known bot-detection trigger. Metadata extraction
+        // never sets these and works fine; only apply them for non-YouTube
+        // extractors that may actually need them.
+        const isYT = url.includes('youtube.com') || url.includes('youtu.be')
+        const defaultHeaders = isYT ? [] : [
             '--add-header', 'Referer:https://www.google.com/',
             '--add-header', `User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
         ]
@@ -281,3 +288,4 @@ const serveDownload = async (req, res) => {
 }
 
 export { startDownload, confirmDownload, serveDownload };
+          
