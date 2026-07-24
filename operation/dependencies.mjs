@@ -142,7 +142,7 @@ function ensureCookiesFile() {
   return COOKIES_PATH;
 }
 
-function buildYtdlpArgs( url,  outputPath, cookie, quality = null, defaultHeaders = [], headerArgs = []) {
+function buildYtdlpArgs(url, outputPath, cookie, quality = null, defaultHeaders = [], headerArgs = []) {
 
   let format;
 
@@ -164,8 +164,13 @@ function buildYtdlpArgs( url,  outputPath, cookie, quality = null, defaultHeader
 
     '--merge-output-format', 'mp4',
 
-    '--extractor-args',
-    'youtube:player_client=android,web',
+    // REMOVED: '--extractor-args', 'youtube:player_client=android,web'
+    // The android client combined with --cookies triggers a known yt-dlp
+    // regression: yt-dlp silently falls back to the web client, which then
+    // gets bot-detected ("Sign in to confirm you're not a bot"). Letting
+    // yt-dlp pick its own cookie-aware default client combo (currently
+    // tv_downgraded + web_safari for authenticated requests) avoids this —
+    // same fix already confirmed working in the metadata extractor.
 
     '--cookies',
     cookie,
@@ -196,6 +201,8 @@ function buildYtdlpArgs( url,  outputPath, cookie, quality = null, defaultHeader
     outputPath
   ];
 }
+
+export { buildYtdlpArgs };
 
 const processes = new Map()
 
