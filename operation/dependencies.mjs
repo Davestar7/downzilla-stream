@@ -204,8 +204,6 @@ function buildYtdlpArgs(url, outputPath, cookie, quality = null, defaultHeaders 
   ];
 }
 
-export { buildYtdlpArgs };
-
 const processes = new Map()
 
 setInterval(() => {
