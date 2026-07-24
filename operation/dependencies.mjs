@@ -191,6 +191,8 @@ function buildYtdlpArgs(url, outputPath, cookie, quality = null, defaultHeaders 
 
     '--ignore-config',
 
+    '--no-cache-dir',
+
     '--no-playlist',
 
     ...defaultHeaders,
@@ -201,6 +203,8 @@ function buildYtdlpArgs(url, outputPath, cookie, quality = null, defaultHeaders 
     outputPath
   ];
 }
+
+export { buildYtdlpArgs };
 
 const processes = new Map()
 
