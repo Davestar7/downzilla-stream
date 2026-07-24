@@ -19,6 +19,13 @@ const ffmpegPath = isWindows
 
 const tempPath = path.join(__dirname, "temp");
 
+// How long a download job is allowed to run before we consider it stuck
+// and force-kill it. Without this, a hung yt-dlp process (e.g. stalled on
+// an nsig challenge or SABR-forced manifest resolution) leaves the job
+// stuck at "processing" forever, with the frontend polling indefinitely
+// and no visible error.
+const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 if (!fs.existsSync(tempPath)) {
     fs.mkdirSync(tempPath, { recursive: true })
     console.log('Created temp directory:', tempPath)
@@ -83,70 +90,87 @@ const startDownload = async (req, res) => {
             '--add-header', 'Referer:https://www.google.com/',
             '--add-header', `User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
         ]
-        /*
-        const ytdlpArg = [
-            url,
-            '-f', 'bestvideo[ext=mp4][filesize<200M]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[filesize<200M]/best',
-            '--merge-output-format', 'mp4',
-            '--extractor-args', 'youtube:player_client=tv',
-            '--js-runtimes', 'node',
-            '--cookies', cookie,
-            ...defaultHeaders,
-            ...headerArgs,
-            '-o', outputPath
-        ]
-        */
+
         const ytdlpArg = buildYtdlpArgs(url, outputPath, cookie, newHeight, defaultHeaders, headerArgs)
-        console.log(ytdlpArg)
-      
+        console.log('[DOWNLOAD] args:', ytdlpArg)
+        console.log('[DOWNLOAD] starting job:', fileId, '| url:', url)
+
         const yt = spawn(ytDlpPath, ytdlpArg, {
             stdio: "pipe",
             cwd: __dirname
         })
 
-        processes.set(fileId, {
+        const job = {
             status: "processing",
             outputPath,
             filename,
             yt,
             expiresAt: Date.now() + 30 * 60 * 1000
-        })
+        }
+        processes.set(fileId, job)
 
         // Respond immediately — client polls confirmDownload for status
         res.json({ success: true, jobId: fileId })
 
+        // Timeout guard — if yt-dlp hasn't finished within DOWNLOAD_TIMEOUT_MS,
+        // force-kill it and mark the job failed instead of leaving it stuck
+        // at "processing" forever.
+        const hangTimeout = setTimeout(() => {
+            if (!yt.killed) {
+                console.log('[DOWNLOAD] job', fileId, 'exceeded timeout — killing process')
+                try { yt.kill('SIGKILL') } catch (e) {
+                    console.error('[DOWNLOAD] failed to kill hung process:', e.message)
+                }
+                const currentJob = processes.get(fileId)
+                if (currentJob && currentJob.status === "processing") {
+                    currentJob.status = "failed"
+                    if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+                }
+            }
+        }, DOWNLOAD_TIMEOUT_MS)
+
+        let lastStderr = ""
+
         // FIX 2: Consume stderr — without this, the 64KB pipe buffer fills up on
         // large downloads and yt-dlp blocks indefinitely waiting for it to drain.
         yt.stderr.on('data', (data) => {
-            console.log('yt-dlp:', data.toString())
+            const line = data.toString()
+            lastStderr = line
+            console.log('yt-dlp:', line)
         })
         yt.stdout.on('data', () => {}) // drain stdout
 
         yt.on("close", (code) => {
-            const job = processes.get(fileId)
-            if (!job) return
+            clearTimeout(hangTimeout)
+            const currentJob = processes.get(fileId)
+            if (!currentJob) return
 
             if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                console.log('yt-dlp download done, file size:', fs.statSync(outputPath).size)
-                job.status = "done"
-                job.expiresAt = Date.now() + 30 * 60 * 1000
+                console.log('[DOWNLOAD] job', fileId, 'done, file size:', fs.statSync(outputPath).size)
+                currentJob.status = "done"
+                currentJob.expiresAt = Date.now() + 30 * 60 * 1000
             } else {
-                console.log('yt-dlp download failed with code:', code)
-                job.status = "failed"
+                console.log('[DOWNLOAD] job', fileId, 'failed with code:', code, '| last stderr:', lastStderr.slice(0, 500))
+                currentJob.status = "failed"
+                currentJob.error = lastStderr.slice(0, 500)
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
             }
         })
 
         // FIX 3: Capture the err argument — previously swallowed silently
         yt.on("error", (err) => {
-            const job = processes.get(fileId)
-            if (job) {
-                job.status = "failed"
+            clearTimeout(hangTimeout)
+            console.error('[DOWNLOAD] spawn error for job', fileId, ':', err.message)
+            const currentJob = processes.get(fileId)
+            if (currentJob) {
+                currentJob.status = "failed"
+                currentJob.error = err.message
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
             }
         })
 
     } catch (e) {
+        console.error('[DOWNLOAD] startDownload outer catch:', e)
         res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` })
     }
 }
@@ -170,8 +194,9 @@ const confirmDownload = async (req, res) => {
         }
 
         if (job.status === "failed") {
+            const errorMessage = job.error || "download failed"
             processes.delete(jobId)
-            return res.json({ success: false, done: false, status: "failed", message: "download failed" })
+            return res.json({ success: false, done: false, status: "failed", message: errorMessage })
         }
 
         if (job.status === "done") {
@@ -180,7 +205,7 @@ const confirmDownload = async (req, res) => {
         }
 
     } catch (e) {
-        console.log(e)
+        console.error('[DOWNLOAD] confirmDownload error:', e)
         res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` })
     }
 }
@@ -246,9 +271,10 @@ const serveDownload = async (req, res) => {
         fileStream.pipe(res)
 
     } catch (e) {
-        console.log(e)
+        console.error('[DOWNLOAD] serveDownload error:', e)
         res.status(500).json({ success: false, message: `${e.message}, apologies 😣 fix in progress` })
     }
 }
 
-export { startDownload, confirmDownload, serveDownload }
+export { startDownload, confirmDownload, serveDownload };
+                             
