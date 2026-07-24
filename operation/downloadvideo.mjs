@@ -195,7 +195,11 @@ const confirmDownload = async (req, res) => {
 
         if (job.status === "failed") {
             const errorMessage = job.error || "download failed"
-            processes.delete(jobId)
+            // Don't delete immediately — a duplicate/in-flight poll that
+            // arrives right after this one would otherwise hit 404 instead
+            // of seeing the real failure reason. Keep it around briefly,
+            // same as "done" jobs, and let it expire naturally.
+            job.expiresAt = Date.now() + 5 * 60 * 1000
             return res.json({ success: false, done: false, status: "failed", message: errorMessage })
         }
 
@@ -277,4 +281,3 @@ const serveDownload = async (req, res) => {
 }
 
 export { startDownload, confirmDownload, serveDownload };
-                             
