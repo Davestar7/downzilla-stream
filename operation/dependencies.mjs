@@ -148,16 +148,16 @@ function buildYtdlpArgs(url, outputPath, cookie, quality = null, defaultHeaders 
 
   if (quality) {
     format =
-      `bestvideo[height<=${quality}]+bestaudio/` +
-      `best[height<=${quality}]/` +
-      `best`;
+      `bv*[height<=${quality}]+ba/` +
+      `b[height<=${quality}]/` +
+      `bv*+ba/b`;
   } else {
     format =
-      `bestvideo+bestaudio/` +
-      `best`;
+      `bv*+ba/` +
+      `b`;
   }
 
-  return [
+  const args = [
     url,
 
     '--format', format,
@@ -195,13 +195,28 @@ function buildYtdlpArgs(url, outputPath, cookie, quality = null, defaultHeaders 
 
     '--no-playlist',
 
-    ...defaultHeaders,
-
-    ...headerArgs,
-
-    '-o',
-    outputPath
+    // Spread out requests slightly — pure datacenter-IP flagging isn't
+    // affected much by this alone, but combined with a proxy (below) it
+    // reduces the odds of tripping frequency-based heuristics on top of
+    // IP-reputation ones.
+    '--sleep-requests', '1',
   ];
+
+  // Optional residential/mobile proxy support. Datacenter IPs (Render,
+  // Railway, AWS, etc.) are broadly flagged by YouTube's bot detection at
+  // the stream-URL-resolution step, independent of valid cookies — this is
+  // a widely documented 2026 pattern, not specific to this app. Set
+  // YTDLP_PROXY_URL in your Render environment (e.g.
+  // http://user:pass@proxy-host:port) if you have a residential/mobile
+  // proxy provider, and downloads will route through it instead of
+  // Render's own IP.
+  if (process.env.YTDLP_PROXY_URL) {
+    args.push('--proxy', process.env.YTDLP_PROXY_URL);
+  }
+
+  args.push(...defaultHeaders, ...headerArgs, '-o', outputPath);
+
+  return args;
 }
 
 const processes = new Map()
