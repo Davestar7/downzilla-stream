@@ -21,6 +21,9 @@ RUN mkdir -p /app/operation && \
 COPY package*.json ./
 RUN npm install
 
+#ytdlp plugin assiant
+RUN pip3 install --break-system-packages yt-dlp-invidious
+
 # Copy rest of the app
 COPY . .
 
