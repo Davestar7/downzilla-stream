@@ -253,6 +253,8 @@ const stream = async (req, res) => {
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
             '--merge-output-format', 'mp4',
             '--cookies', cookie,
+             '--js-runtimes',
+             'deno,node',
             ...headerArgs,
             '-o', outputPath
         ]
