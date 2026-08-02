@@ -32,6 +32,13 @@ RUN mkdir -p /app/operation && \
     ln -sf "$(which yt-dlp)" /app/operation/yt-dlp && \
     chmod a+rx /app/operation/yt-dlp
 
+# Install Deno as an additional JS runtime. yt-dlp's EJS challenge solver
+# prioritizes deno > node > phantomjs, and several documented cases show
+# node's JS-challenge-provider detection being unreliable while deno works
+# correctly for the same EJS scripts. DENO_INSTALL=/usr/local puts the
+# binary directly on PATH with no extra config needed.
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
+
 # Install node deps (copy package files first for layer caching)
 COPY package*.json ./
 RUN npm install
