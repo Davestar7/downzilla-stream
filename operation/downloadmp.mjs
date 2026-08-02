@@ -71,7 +71,9 @@ const startAudioDownload = async (req, res) => {
             '--audio-quality', '0',
             '--postprocessor-args', 'ffmpeg:-vn',
             '--extractor-args', 'youtube:player_client=tv',
-            '--js-runtimes', 'node',
+            //'--js-runtimes', 'node',
+          '--js-runtimes',
+          'deno,node',
             '--cookies', cookie,
             ...headerArgs,
             '-o', outputPath.replace('.mp3', '.%(ext)s')
