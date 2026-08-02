@@ -19,16 +19,39 @@ const ffmpegPath = isWindows
 
 const tempPath = path.join(__dirname, "temp");
 
-// How long a download job is allowed to run before we consider it stuck
-// and force-kill it. Without this, a hung yt-dlp process (e.g. stalled on
-// an nsig challenge or SABR-forced manifest resolution) leaves the job
-// stuck at "processing" forever, with the frontend polling indefinitely
-// and no visible error.
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 if (!fs.existsSync(tempPath)) {
     fs.mkdirSync(tempPath, { recursive: true })
     console.log('Created temp directory:', tempPath)
+}
+
+// Diagnostic helper — runs --list-formats and logs the raw output.
+// Used only when a download fails, so we can see exactly what formats
+// (if any) were actually available, without needing Shell access
+// (not available on Render's free tier).
+function logAvailableFormats(url, cookie) {
+    const args = [
+        url,
+        '--cookies', cookie,
+        '--js-runtimes', 'node',
+        '--list-formats',
+        '--no-cache-dir',
+        '--no-playlist',
+        '--force-ipv4',
+    ]
+    console.log('[DIAGNOSTIC] running --list-formats for:', url)
+    const proc = spawn(ytDlpPath, args, { stdio: ["ignore", "pipe", "pipe"], cwd: '/app/operation' })
+    let out = ""
+    proc.stdout.on('data', d => { out += d.toString() })
+    proc.stderr.on('data', d => { out += d.toString() })
+    proc.on('close', code => {
+        console.log('[DIAGNOSTIC] --list-formats closed with code:', code)
+        console.log('[DIAGNOSTIC] --list-formats output:\n', out)
+    })
+    proc.on('error', err => {
+        console.error('[DIAGNOSTIC] --list-formats spawn error:', err.message)
+    })
 }
 
 const startDownload = async (req, res) => {
@@ -57,7 +80,6 @@ const startDownload = async (req, res) => {
 
         const outputPath = path.join(tempPath, `${fileId}.mp4`)
 
-        // Reuse existing completed file
         if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
             let job = processes.get(fileId)
             if (!job) {
@@ -70,7 +92,6 @@ const startDownload = async (req, res) => {
             return res.json({ success: true, jobId: fileId })
         }
 
-        // Attach to already in-progress job
         let existingJob = processes.get(fileId)
         if (existingJob && existingJob.status === "processing") {
             existingJob.filename = filename
@@ -86,12 +107,6 @@ const startDownload = async (req, res) => {
             }
         }
 
-        // Forcing a custom Referer/User-Agent on YouTube requests conflicts
-        // with the real browser fingerprint the cookies were exported from —
-        // replaying a logged-in session's cookies under a different device
-        // fingerprint is a known bot-detection trigger. Metadata extraction
-        // never sets these and works fine; only apply them for non-YouTube
-        // extractors that may actually need them.
         const isYT = url.includes('youtube.com') || url.includes('youtu.be')
         const defaultHeaders = isYT ? [] : [
             '--add-header', 'Referer:https://www.google.com/',
@@ -116,12 +131,8 @@ const startDownload = async (req, res) => {
         }
         processes.set(fileId, job)
 
-        // Respond immediately — client polls confirmDownload for status
         res.json({ success: true, jobId: fileId })
 
-        // Timeout guard — if yt-dlp hasn't finished within DOWNLOAD_TIMEOUT_MS,
-        // force-kill it and mark the job failed instead of leaving it stuck
-        // at "processing" forever.
         const hangTimeout = setTimeout(() => {
             if (!yt.killed) {
                 console.log('[DOWNLOAD] job', fileId, 'exceeded timeout — killing process')
@@ -138,14 +149,12 @@ const startDownload = async (req, res) => {
 
         let lastStderr = ""
 
-        // FIX 2: Consume stderr — without this, the 64KB pipe buffer fills up on
-        // large downloads and yt-dlp blocks indefinitely waiting for it to drain.
         yt.stderr.on('data', (data) => {
             const line = data.toString()
             lastStderr = line
             console.log('yt-dlp:', line)
         })
-        yt.stdout.on('data', () => {}) // drain stdout
+        yt.stdout.on('data', () => {})
 
         yt.on("close", (code) => {
             clearTimeout(hangTimeout)
@@ -161,10 +170,14 @@ const startDownload = async (req, res) => {
                 currentJob.status = "failed"
                 currentJob.error = lastStderr.slice(0, 500)
                 if (fs.existsSync(outputPath)) fs.unlink(outputPath, () => {})
+
+                // On failure, run a diagnostic --list-formats call so we can
+                // see exactly what's available (if anything) in the logs —
+                // no Shell access needed.
+                logAvailableFormats(url, cookie)
             }
         })
 
-        // FIX 3: Capture the err argument — previously swallowed silently
         yt.on("error", (err) => {
             clearTimeout(hangTimeout)
             console.error('[DOWNLOAD] spawn error for job', fileId, ':', err.message)
@@ -202,10 +215,6 @@ const confirmDownload = async (req, res) => {
 
         if (job.status === "failed") {
             const errorMessage = job.error || "download failed"
-            // Don't delete immediately — a duplicate/in-flight poll that
-            // arrives right after this one would otherwise hit 404 instead
-            // of seeing the real failure reason. Keep it around briefly,
-            // same as "done" jobs, and let it expire naturally.
             job.expiresAt = Date.now() + 5 * 60 * 1000
             return res.json({ success: false, done: false, status: "failed", message: errorMessage })
         }
@@ -288,4 +297,3 @@ const serveDownload = async (req, res) => {
 }
 
 export { startDownload, confirmDownload, serveDownload };
-          
