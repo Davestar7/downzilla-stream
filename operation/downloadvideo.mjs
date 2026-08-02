@@ -34,11 +34,12 @@ function logAvailableFormats(url, cookie) {
     const args = [
         url,
         '--cookies', cookie,
-        '--js-runtimes', 'node',
+        '--js-runtimes', 'deno,node',
         '--list-formats',
         '--no-cache-dir',
         '--no-playlist',
         '--force-ipv4',
+        '--verbose',
     ]
     console.log('[DIAGNOSTIC] running --list-formats for:', url)
     const proc = spawn(ytDlpPath, args, { stdio: ["ignore", "pipe", "pipe"], cwd: '/app/operation' })
@@ -297,3 +298,4 @@ const serveDownload = async (req, res) => {
 }
 
 export { startDownload, confirmDownload, serveDownload };
+                    
