@@ -194,7 +194,8 @@ function extractYoutube(url, cookie) {
             "--retries", "3",
             "--cookies", cookie,
             "--ignore-no-formats-error",
-            "--js-runtimes", "node",
+            //"--js-runtimes", "node",
+            "--js-runtimes", "deno,node",
         ];
 
         args.push(url);
