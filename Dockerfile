@@ -1,6 +1,6 @@
 FROM node:20-bookworm
 
-# Install system deps (python3, pip, ffmpeg, git, curl)
+# Install system deps
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -11,18 +11,30 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Add a build arg that changes each time you want a fresh yt-dlp binary
-ARG YTDLP_CACHE_BUST=1
+# CHANGED: install yt-dlp via pip with the [default] extra instead of
+# downloading the standalone GitHub-releases binary. The standalone binary
+# does NOT bundle the EJS (Embedded JavaScript) challenge-solver scripts
+# that yt-dlp needs to solve YouTube's signature/n-challenge — those scripts
+# only ship with the pip package. This is why --js-runtimes node was set
+# correctly but signature solving still failed: there was nothing for
+# node to actually execute.
+RUN pip3 install --break-system-packages "yt-dlp[default]"
 
+# Keep the invidious fallback plugin too — now a secondary safety net
+# rather than the primary workaround, since proper EJS solving should let
+# normal YouTube extraction succeed directly in most cases.
+RUN pip3 install --break-system-packages yt-dlp-invidious
+
+# pip installs yt-dlp's entry point to a standard location on PATH.
+# Symlink it to /app/operation/yt-dlp so ytDlpPath in your existing code
+# (which hardcodes this path) keeps working with zero code changes.
 RUN mkdir -p /app/operation && \
-    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /app/operation/yt-dlp && \
+    ln -sf "$(which yt-dlp)" /app/operation/yt-dlp && \
     chmod a+rx /app/operation/yt-dlp
+
 # Install node deps (copy package files first for layer caching)
 COPY package*.json ./
 RUN npm install
-
-#ytdlp plugin assiant
-RUN pip3 install --break-system-packages yt-dlp-invidious
 
 # Copy rest of the app
 COPY . .
