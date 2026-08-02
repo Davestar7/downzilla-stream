@@ -176,7 +176,7 @@ function buildYtdlpArgs(url, outputPath, cookie, quality = null, defaultHeaders 
     cookie,
 
     '--js-runtimes',
-    'node',
+    'deno,node',
 
     '--retries',
     '10',
